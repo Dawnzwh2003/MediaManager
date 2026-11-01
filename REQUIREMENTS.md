@@ -1,0 +1,116 @@
+# 产品需求与业务行为
+
+## 状态与文档范围
+
+当前只更新设计，不实现代码，不开始 Phase 1。本文件记录截至本轮收到的全部需求。下列身份、事件、播放、进度与规模规则已经用户正式批准，不能再标为待审核。后续页面细节不影响已冻结的基础语义。
+
+固定技术栈：Tauri、React、TypeScript、Rust、SQLite、FFmpeg。具体依赖版本在工程初始化时锁定。
+
+## 长期核心原则（已批准）
+
+| ID | 约束 |
+| --- | --- |
+| R01 | media_id 表示逻辑媒体文件实例；path 和 fingerprint 都不是 identity。 |
+| R02 | System Tag 仅由真实物理目录层级生成，数据库保存扫描投影；离线时标明上次观察状态，不冒充实时事实。 |
+| R03 | Custom Tag 完全独立于文件系统，只关联媒体 ID，不改变文件名、目录或位置。 |
+| R04 | Like、View、Play 使用 Event Log。 |
+| R05 | like_events、view_events、play_events 是 Source of Truth。 |
+| R06 | media.like_count、view_count、play_count 等仅为 Counter Cache。 |
+| R07 | 每次有效事件插入与对应计数更新必须同一 SQLite transaction 提交或整体回滚。 |
+| R08 | 必须支持从日志重建单媒体、单种及全部统计，包括零事件媒体。 |
+| R09 | 普通启动不得重建整个数据库；优先打开已有数据库并使 UI 可用。 |
+| R10 | 所有扫描支持 incremental scanning；启动后的增量扫描在后台，不等待全库扫描才开放 UI。 |
+| R11 | 扫描、指纹、缩略图及播放代理生成不得阻塞 UI，必须使用有界任务队列。 |
+| R12 | 单个损坏/不可读媒体及解码失败不得使整个应用崩溃。 |
+| R13 | 用户原始媒体默认只读，不得删除实际媒体文件；清理只处理应用自己的缓存。 |
+| R14 | Schema 修改必须经过可追踪 migration，不得临时改表绕过迁移。 |
+| R15 | 合理的 Bug 修复应增加 regression test；不适用时说明理由。 |
+| R16 | 不得为了完成某 Phase 破坏确认的数据模型和模块边界。 |
+| R17 | 重大需求、架构及 Schema 修改先说明理由、影响与迁移策略，再实施。 |
+
+## 媒体身份、重复内容与扫描（已批准）
+
+- 两个不同路径的独立文件，即使 size、fingerprint、full hash 完全相同，默认仍为两个 media_id；禁止按摘要自动 deduplicate。fingerprint 值不得设置 UNIQUE，其用途仅为 reconciliation evidence、重复检测及未来重复内容 UI。
+- 高置信度 rename/move 保留 media_id、imported_at、Custom Tags、三个 Event Log 和 playback state；更新 file_path、必要的 filename、System Tags、last_seen_at 及 filesystem metadata。file_path/filename 可由当前位置投影返回，无须重复存放在 media 主表。
+- **False negative is preferable to false positive**。cross-volume、copy then delete、多份相同副本等无法可靠匹配时，对账结束后旧 media 标 missing，新文件创建 new media；不能无限 pending，也不能猜测性继承历史。临时文件读取/扫描尚未结束可 pending；离线或无权限不能伪装成“确认旧路径消失”。manual relink 不属于当前 Phase。
+- 同一路径被确认替换为不同媒体：旧 media 标 superseded（历史保留、旧位置退役），新内容使用 new media_id、new imported_at，三个计数为零，不继承标签和进度。同路径、同 file ID 均不能单独证明可继承。
+- new/existing/moved/renamed/modified/missing/restored 均需明确判定。modified 是内容变化观察；若确认已是不同媒体，必须走 replacement，而不是仅增加旧媒体版本。仅经高置信度确认仍属同一逻辑实例的变更可增加内容版本，证据不足保守分离。
+- 移动/重命名后的身份确认应保留全部关联；不能自动匹配的情况下，保留旧历史但不保证将其自动挂到新文件上。
+
+## Like（已批准并冻结）
+
+每次用户主动 Like 都新增一条 like_event。Like 不是 Boolean，没有 Unlike、toggle、撤销或负向 delta。同一媒体可以累计任意多次 Like，受实现整数范围限制时须明确报错，不能溢出或丢弃。
+
+例如五次主动 Like = 五条事件、like_count 增加五。每次主动动作有新的 request_id；同一动作的 IPC 重试沿用原 request_id，不能误当成下一次 Like，也不能把多次主动按键合并成一次。
+
+同事务执行 BEGIN → INSERT like_events → UPDATE media.like_count → COMMIT；任一步失败整体 rollback。必须提供 rebuild_like_count(media_id)、rebuild_all_like_counts() 和统一 statistics rebuild。like_count 的重建公式为 COUNT(like_events)，不再使用 SUM(delta)。
+
+## View = Media Activation（已批准并冻结）
+
+媒体真正成为 Image Viewer、Video Player 或 Quick Browse 的当前主媒体时产生一次 View。A → B → A 产生 View(A)、View(B)、View(A)。
+
+使用稳定 activation identity，每个 activation 只记一次；离开后再次成为当前主媒体必须获得新 activation。React rerender、StrictMode 重挂载、resize、state update、fullscreen update 不产生新 activation，不能以时间 debounce 定义业务。
+
+Grid 点击并真正打开媒体、Quick Browse 切换当前媒体均算一次。thumbnail hover、lazy loading、scrolling into viewport、background preload 不算。仅预取或尚未完成主媒体切换不建立 activation；该业务不以停留时间或播放资格为前提。
+
+view_events 是事实来源；view_count = activation 对应的有效事件数。播放器内部 Direct/Remux/Proxy 切换沿用 activation，不额外计 View。
+
+## Qualified Play Sessions（已批准并冻结）
+
+- 打开 Video Player 不算 Play；达到资格才插入一条 play_event，play_count 表示 Qualified Play Sessions 数量。
+- 普通视频累计真实播放时间 >= 5 seconds 才 qualify；总时长 < 5 seconds 的视频，真实播放至结尾即可 qualify。恰好 5 秒按普通视频规则。
+- watched_seconds 累计实际播放经过的时间，不把 seek 跳跃、缓冲、暂停、加载、恢复位置算观看时间。倍速时使用实际经过的播放时间，不用媒体时间跳变量冒充时长。
+- 同一 player session 内 play/pause/resume/seek/重复播放仍最多一条事件。切换媒体、关闭播放器或明确结束该媒体 player session 后再次播放可以创建新 session 并形成新事件。重播按钮本身不自动划分新 session。
+- 短视频资格依赖真实 ended，不依赖 completed 阈值；不能仅通过 seek 到尾或恢复近尾位置使其 qualify。未知/无效 duration 无法认定为短视频，先按 >=5 秒规则处理，取得有效时长后可按该 session 的真实 ended 证据核验。
+- 自动播放若真实发生，也按同一资格与 session 规则，不以按钮点击作为判断。仅后台 preload 不算播放；播放失败前若已满足资格，已提交事件保留。
+- play_events 至少支持 id、media_id、content_version_id、started_at、qualified_at、ended_at、start_position、end_position、watched_seconds、completed。资格时插入、结束时受限补全同一事件；不创建第二条 Play，不再次加计数。异常退出不能虚构未观察到的观看时间。
+
+## Playback State 与 completed（已批准）
+
+playback_states 独立关联 media_id 和内容版本，至少包含 position_seconds、duration_seconds、updated_at、completed。保存进度不得创建 Play Event，不要求先产生 qualified event 才可保存。
+
+同内容移动/重命名保留状态；替换为新媒体不继承。原媒体的旧版本状态保留，内容版本变化不得隐式套用旧状态。多播放器并发用版本校验和明确 owner 接管，具体窗口 UX 可后续确定。
+
+有效 duration > 0 时，位置先限制在 [0,duration]，completed =
+progress >= 95% OR remaining_time <= min(10 seconds, duration * 5%)。
+其中 progress = position / duration，remaining_time = duration - position；duration 未知/零/无效时 completed=false（待有效信息后重算）。禁止简单以 remaining < 10 seconds 判断短视频完成。completed 不是 Play qualification，seek 可改变完成状态但不能凭此生成 Play。
+
+## 三层播放与派生缓存（已批准）
+
+依序选择 Direct Play → FFmpeg Remux → FFmpeg Transcode Proxy：
+WebView 能直接播放则 Direct；codec 可播放但 container 不兼容时优先 remux、不重新编码；codec 不兼容或 remux 仍不能播放时按需生成 proxy。探测与真实播放失败可触发下一层，但不得引入额外 activation 或 player session。
+
+代理放 cache/playback/，例如 cache/playback/<media_id>/<content-version>.mp4。原文件永不修改；代理可安全删除和重新生成，版本改变后旧代理不能作为当前版本播放。使用 bounded/LRU 策略。优先 H.264 + AAC MP4，具体 profile、分辨率及 FFmpeg 构建选项按目标 WebView 验证并记录架构决策。
+
+FFmpeg 任务有全局并发预算；播放 remux/proxy 默认低并发 1 job，后续可配置为 1–2，不允许无界转码。生成可取消、可报进度，失败需隔离。
+
+## 100,000+ Media 与稳定浏览（已批准）
+
+- 前端禁止一次加载全部媒体对象；Grid 必须 virtualization，thumbnail 必须 lazy loading，有界预取与缓存。
+- SQLite 执行 sorting/filtering/search，增量分页默认约 100 条，使用 keyset/cursor，深分页不依赖巨大 OFFSET；React 不做全库排序过滤。
+- 配置 foreign_keys、适用环境的 WAL、busy_timeout，并为高频查询建索引。
+- Scanner、thumbnail 和 FFmpeg proxy 都有独立有界队列及共享资源上限；不得用异步函数名掩盖阻塞 UI 的实际工作。
+- Counter rebuild 后台执行、资源有界，不能长时间使 UI 完全不可用；采用分批统计修复与并发事件补偿，详见架构。
+- Random 保存稳定 seed 和算法版本；Quick Browse 固定成员/顺序，点赞、扫描、分页、重渲染不会隐式洗牌。主动更改过滤或 reshuffle 创建新会话。
+- 性能未实测不是 Phase 1 阻塞项；后续 Phase 在明确硬件、库规模、事件量和预算后验收。
+
+## 后续细节与阶段影响（均非 Phase 1 blocker）
+
+| 项目 | 当前约束及决策时点 |
+| --- | --- |
+| 页面/MVP、搜索字段与排序组合（原 Q01） | 已冻结数据/API 边界，Phase 4 前细化页面验收及索引。 |
+| System Tag 根名称与祖先筛选 UX（Q06） | 只能来自真实目录，展示政策 Phase 4 前定案。 |
+| Custom Tag 层级、重名及大小写（Q07） | ID+关系表先独立建模，Phase 4 前增加正式约束迁移。 |
+| 系统/格式矩阵与性能硬件（Q08） | Phase 1 初始化锁定当前构建目标；兼容矩阵和量化性能在 Phase 3/6 验证，不阻止数据基础。 |
+| FFmpeg 许可、分发及 profile（Q09） | 三层架构已批准；实现选择于 Phase 3、发布前完成许可验证。 |
+| 根移除、保留、备份 UI（Q10） | 不删除原文件或日志；正式升级须一致性备份，数据清理需另行设计。 |
+| 网络盘/链接/多实例（Q11） | 当前设计默认单写实例、不跟随链接、拒绝重叠根；扩展支持另行验证。 |
+| 深度核验频率（Q12） | 普通增量不保证发现同大小同时间戳改写；显式深度核验是后台任务。 |
+| Quick Browse 生命周期（Q13） | 技术上可恢复固定顺序；保留期/恢复交互在 Phase 4 确认，不静默洗牌。 |
+| 多窗口接管/同一实例编辑证据（Q14） | CAS 和 owner 防陈旧写入；证据不足按新媒体处理，不要求 Phase 1 猜测政策。 |
+
+原 Q02–Q05 身份、Like、View、Play 已关闭；Q09 三层播放和 Q14 独立状态/替换隔离部分已关闭。manual relink、自动内容去重、原文件编辑删除均不属于本轮实施范围。
+
+## 变更纪律
+
+重大变更先说明原因、影响和 migration，再同步五份文档和决策历史。批准的产品语义不得被工具选型、性能捷径或某个 Phase 的便利性覆盖。本轮只交付 Markdown；Ready for Phase 1 仅表示设计具备基础阶段条件，不是开始实现的授权。
