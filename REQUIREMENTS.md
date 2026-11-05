@@ -2,9 +2,27 @@
 
 ## 状态与文档范围
 
-当前只更新设计，不实现代码，不开始 Phase 1。本文件记录截至本轮收到的全部需求。下列身份、事件、播放、进度与规模规则已经用户正式批准，不能再标为待审核。后续页面细节不影响已冻结的基础语义。
+当前用户已授权 Phase 2，且仅实现数据模型与数据库层；不实现 media scanner、Event Service 或 UI 业务。本文件记录截至本轮收到的全部需求，批准语义不再标为待审核。
 
 固定技术栈：Tauri、React、TypeScript、Rust、SQLite、FFmpeg。具体依赖版本在工程初始化时锁定。
+
+2026-11-02 用户进一步授权使用最新稳定 Rust 替代 1.90.0，并安装 typecheck/Tauri 工具：项目已改为 stable 通道（本轮 1.99.1），TypeScript 与 Tauri CLI 使用项目本地依赖。此项不扩展业务范围；安装或完整构建失败仍需如实保留未验收状态。
+
+### 已有 Phase 1 基础
+
+初始化 Tauri/React/TypeScript 与 Rust 分层；SQLite connection、migration 基础设施；安全创建 data/、cache/、cache/thumbnails/；统一错误与 get_app_status IPC。数据库 v1 仅保存迁移记录和应用元数据。媒体/标签/事件等业务表在后续 Phase 经正式 migration 创建，不能以本轮骨架为由改变其批准模型。
+
+Phase 1 只建立基础设施，原生验证仍受环境限制。用户本轮已明确授权进入 Phase 2，不把此前未授权状态误当当前禁止指令；验证限制继续如实保留。
+
+### 当前 Phase 2 范围（用户指定）
+
+- 建立 media、system_tags、custom_tags、media_system_tags、media_custom_tags、like_events、view_events、play_events、quick_browse_sessions、app_settings 与必要 migration metadata。
+- media 支持 id、fingerprint、file_path、file_name、media_type、file_size、created_time、modified_time、imported_at、last_seen_at、width、height、duration、thumbnail_path、like_count、view_count、play_count、last_viewed_at、last_played_at、playback_position、missing；未知媒体元数据可空，统计默认为零。
+- System Tag 来源于真实物理目录，parent_id 或等价结构支持任意层级；不允许用户手工创建目录层级。数据层只保存可信观察，读取/验证磁盘仍是未来 scanner 职责。
+- Custom Tag 明确无子标签，可创建、改名和删除，多对多关联媒体；禁止用逗号字符串保存 tags。当前名称 trim、非空且按 SQLite NOCASE 唯一；非 ASCII 不做额外 case-fold。
+- 建立 Rust Repository；React 不接触 SQL，且不新增业务 Tauri command。事件仅实现表/约束和原子计数触发器，Repository 只读；不实现 Event Service。
+- 为多对多、System Tag hierarchy、唯一性、FK、cascade、migration 等写测试。删除标签只清理关联，事件历史不得级联删除；普通数据操作不修改物理文件。
+- 独立内容版本/位置历史/播放状态及快照成员表用于保留已批准架构边界；不因此实现播放器、随机排序或浏览业务。完成数据层与测试后停止，不自动推进 scanner 或其他 Phase。
 
 ## 长期核心原则（已批准）
 
@@ -100,7 +118,7 @@ FFmpeg 任务有全局并发预算；播放 remux/proxy 默认低并发 1 job，
 | --- | --- |
 | 页面/MVP、搜索字段与排序组合（原 Q01） | 已冻结数据/API 边界，Phase 4 前细化页面验收及索引。 |
 | System Tag 根名称与祖先筛选 UX（Q06） | 只能来自真实目录，展示政策 Phase 4 前定案。 |
-| Custom Tag 层级、重名及大小写（Q07） | ID+关系表先独立建模，Phase 4 前增加正式约束迁移。 |
+| Custom Tag（Q07 已在本轮关闭） | 无子标签、可 CRUD、标准多对多；trim 后非空、SQLite NOCASE 名称唯一。 |
 | 系统/格式矩阵与性能硬件（Q08） | Phase 1 初始化锁定当前构建目标；兼容矩阵和量化性能在 Phase 3/6 验证，不阻止数据基础。 |
 | FFmpeg 许可、分发及 profile（Q09） | 三层架构已批准；实现选择于 Phase 3、发布前完成许可验证。 |
 | 根移除、保留、备份 UI（Q10） | 不删除原文件或日志；正式升级须一致性备份，数据清理需另行设计。 |
@@ -113,4 +131,4 @@ FFmpeg 任务有全局并发预算；播放 remux/proxy 默认低并发 1 job，
 
 ## 变更纪律
 
-重大变更先说明原因、影响和 migration，再同步五份文档和决策历史。批准的产品语义不得被工具选型、性能捷径或某个 Phase 的便利性覆盖。本轮只交付 Markdown；Ready for Phase 1 仅表示设计具备基础阶段条件，不是开始实现的授权。
+重大变更先说明原因、影响和 migration，再同步五份文档和决策历史。批准的产品语义不得被工具选型、性能捷径或某个 Phase 的便利性覆盖。当前仅授权 Phase 2 数据层；测试结果和环境限制如实记录，不把 SQL 测试或设计通过等同于 Rust 原生验收。

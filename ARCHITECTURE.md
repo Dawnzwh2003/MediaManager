@@ -2,7 +2,21 @@
 
 ## 当前基线与本轮变更理由
 
-身份、重复文件、保守匹配、Like、Activation View、Qualified Play、播放状态、completed、三层播放及 100,000+ 架构已获用户批准。本文是据此维护的设计基线，不代表已经实现；本轮只更新五份 Markdown，不开始 Phase 1。具体依赖版本与平台参数在对应 Phase 验证。
+身份、重复文件、保守匹配、Like、Activation View、Qualified Play、播放状态、completed、三层播放及 100,000+ 架构已获用户批准。本文区分总体设计与实际实现；当前用户已授权 Phase 2 数据模型与数据库层，scanner、Event Service 和业务 UI 尚未实现。依赖版本与平台参数在对应 Phase 验证。
+
+当前工具链政策由用户最新授权改为 Rust stable，本机 rustc/cargo 为 1.99.1（D025）。rust-toolchain.toml 选择实际编译通道，Cargo.toml 的 rust-version=1.90 仍是最低版本声明，不能当作当前 pin 或最低版本已验收。npm/Cargo 依赖及真实锁文件均已到位；2026-11-04 类型检查、前端构建、完整 Rust 测试/Clippy、Tauri info、正式 release 构建及隔离的真实桌面 IPC/持久化/实例锁检查均通过。浏览器预览专项仍受工具阻塞，阶段状态见 PLANS.md。以下 Phase 1 版本描述为历史快照。
+
+### Phase 1 实际落地边界
+
+以下保留 Phase 1 历史范围；当前 v2 数据表与 Repository 见「Phase 2 数据库基线」。
+
+- 已编写 commands/domain/services/db/platform 模块；前端仅 app/api。未创建业务功能空壳或注册未来业务 command。
+- 使用 Tauri 2、Vite/React、TypeScript strict、Rust 1.90、rusqlite bundled SQLite。直接依赖精确版本已写入 manifest；受网络限制，完整依赖锁文件尚无法生成，不能宣称依赖闭包已锁定或构建通过。
+- app_local_data_dir 下创建 data/library.sqlite3、data/instance.lock、cache/thumbnails/；只有升级既有库时创建 data/backups/。不使用当前工作目录或用户媒体目录。
+- 唯一 command 是 get_app_status；通过 spawn_blocking 调用状态服务，惰性且串行初始化目录/数据库，UI 可先显示连接状态。初始化失败保留可重试状态，不缓存伪造成功；状态响应不暴露实际路径或 SQL。
+- Phase 1 为单 Mutex 保护连接，应用 lifetime 文件锁限制写实例；后续业务按原架构扩展写协调/读连接。初始 migration 仅 app_metadata，schema_migrations 为 runner 自举表；不提前实现媒体/事件业务 Schema。
+- 校验历史优先于持久 PRAGMA，逐 migration 事务、SHA-256、升级前 SQLite backup。现有较新/损坏/无版本记录库拒绝，不覆盖。详见 D018–D020 与 README。
+- 代码、类型检查、完整原生编译/自动测试、release 构建及真实桌面启动/IPC 检查已通过。剩余浏览器专项上轮被 URL 自动审批检查终止，最新单项重试在浏览器 host/原生 pipe 连接阶段受阻，仍未验收。测试使用独立标识及应用目录覆盖，不改变正式运行路径或权限；具体结果在 PLANS.md。
 
 本轮必须修订旧提案的理由：
 1. 不确定移动无限 pending 不符合批准的 false-negative 优先策略，改为对账结束后 missing + new。
@@ -14,7 +28,7 @@
 
 ## 拟定项目结构
 
-以下是未来目录，不在本轮创建：
+以下是总体目录规划；Phase 1 创建基础模块，Phase 2 增加 domain/library 与 db/repositories，其余业务目录按阶段引入，不代表已经实现。根目录是唯一正式工程，重复的默认模板完整保留在 archive/scaffolds/，并排除在 Cargo workspace 与 Vite watch 之外：
 
 ```text
 /
@@ -31,7 +45,6 @@
 │   │   ├── browse-session/           # 固定成员顺序与当前项
 │   │   ├── tags/                     # System / Custom 分离
 │   │   └── jobs/                     # 后台任务进度与取消
-│   └── test/
 ├── src-tauri/
 │   ├── src/
 │   │   ├── commands/                 # 参数解析、权限、DTO/错误映射
@@ -50,12 +63,19 @@
 │   ├── migrations/                   # 编号、校验和、不可改已应用文件
 │   ├── capabilities/                 # 最小权限
 │   └── tests/
-└── tests/
-    ├── fixtures/                     # 合成或许可明确的小型媒体
-    └── e2e/
+├── tests/
+│   ├── frontend/                     # 现有 TypeScript DTO 契约
+│   ├── architecture/                 # 现有 IPC / 权限边界
+│   ├── database/                     # 现有实际 SQL 测试
+│   ├── fixtures/                     # 后续合成或许可明确的小型媒体
+│   └── e2e/                          # 后续桌面集成
+├── docs/
+│   ├── reviews/                      # 阶段审查历史
+│   └── validation/                   # 实际检查结果
+└── archive/scaffolds/                 # 原始初始化模板，不参与构建
 ```
 
-运行数据在应用数据目录：library.sqlite3、cache/thumbnails/、cache/playback/、临时 spool 和受控诊断日志。不得写媒体目录；本地数据库不放网络共享文件系统。显示路径与用于比较的规范化路径键分离，原生路径编码由 platform 模块封装。
+运行数据在应用数据目录：data/library.sqlite3、cache/thumbnails/；后续再引入 cache/playback/、临时 spool 和诊断日志。不得写媒体目录；本地数据库不放网络共享文件系统。显示路径与规范化路径键分离，原生路径编码由 platform 模块封装。
 
 ## 模块边界与资源预算
 
@@ -114,54 +134,64 @@ media.id 是稳定不透明 UUID，表示逻辑媒体文件实例；不是 path�
 
 只有成功完整枚举的子树可据“本代未见”判 missing。离线、权限失败、取消及崩溃不能批量误标。扫描不是文件系统原子快照，收尾重查关键位置，监听溢出/竞争由后续增量纠正。默认不跟随 symlink/junction、拒绝重叠根；异常文件独立记录失败。
 
-System Tag 来自 directories 和当前 location，directory_closure 仅为真实父子关系派生的可重建索引。历史位置不成为当前标签；离线显示最近成功扫描状态。Custom Tag 另表关联 media_id，操作不触及文件系统。目录重命名只由扫描观察更新，不存在编辑 System Tag 来移动文件的 API。
+System Tag 由 system_tags 和 media_system_tags 保存物理目录观察（取代原 directories 命名）；历史位置不成为当前标签，离线显示最近成功扫描状态。未来 closure 只能是派生索引。Custom Tag 独立关联 media_id，操作不触及文件系统。目录重命名未来由 scanner 更新观察，不存在编辑 System Tag 来移动文件的 API。
 
-## 总体 Schema（逻辑设计，不是实际 DDL）
+## Phase 2 数据库基线（v2 实际 DDL）
 
-ID 使用 TEXT UUID；时间点 UTC 毫秒 INTEGER；媒体位置/时长和观看时间使用有单位的 REAL seconds，输入拒绝 NaN/无穷/负数。content_version_id 为每个 media 内递增正整数，复合键 (media_id, content_version_id) 唯一确定版本。FK 默认 ON DELETE RESTRICT，布尔 CHECK IN (0,1)。? 表示可空。
+当前仅实现数据模型与 Repository；scanner、Event Service、业务 UI 均未实现。真实 Schema 见 [0002_library_model.sql](src-tauri/migrations/0002_library_model.sql)，v1 SQL 保持不变。以下实际模型取代旧总体草图中不同的表名/存储位置；后续新增表仍必须 migration，不能把旧草图当作已经存在的表。
 
-| 表 | 主要字段与约束 |
+### 本轮调整理由与字段映射
+
+用户指定 media 当前字段、system_tags、平面 Custom Tag 和 quick_browse_sessions。为便于有索引的卡片/元数据查询，media 现在是当前文件快照的权威行：包含 path/name/fingerprint/尺寸等指定字段；media_locations 保留位置历史投影，media_revisions 保留内容版本，playback_states 仍独立。改变的是当前字段的存放位置，不改变稳定媒体 ID、历史归属、事件事实来源或保守匹配原则。
+
+system_tags 本身就是原 directories 设计的物理目录投影，不再建第二份可编辑目录树；directory_closure 如以后确有性能需要只能作派生索引。Custom Tag 无 parent_id，无子标签，当前名称使用 SQLite NOCASE（ASCII 大小写不敏感、非 ASCII 精确比较），trim 后非空且唯一。
+
+时间点为 UTC 毫秒 INTEGER；created_time 是可空的文件系统创建时间，modified_time 是文件系统修改时间，与 imported_at 分离。duration、playback_position 和事件位置/观看时间使用秒。未知宽高/时长/thumbnail_path 允许 NULL；三个计数、playback_position 和 missing 有明确零值默认。
+
+| 当前表 | 关键内容 / 边界 |
 | --- | --- |
-| schema_migrations | version PK, checksum, applied_at；已应用脚本不可改。 |
-| db_sequence | id=1 PK, value INTEGER；仅写事务分配单调 change sequence，不用时钟充当高水位。 |
-| catalog_state | id=1 PK, query_generation INTEGER；live cursor 一致性代次。 |
-| library_roots | id PK, path_display, path_key UNIQUE, volume_key?, status, created_at。 |
-| directories | id PK, root_id FK, parent_id FK?, relative_path_key, display_name；UNIQUE(root_id,relative_path_key)，同根/无环。 |
-| directory_closure | ancestor_id FK, descendant_id FK, depth；PK(ancestor_id,descendant_id)，depth>=0。 |
-| media | id PK, kind, state CHECK(active/missing/superseded), current_content_version_id, imported_at, created_seq UNIQUE, last_seen_at, like_count/view_count/play_count INTEGER DEFAULT 0 CHECK>=0, updated_at。 |
-| media_revisions | media_id FK, content_version_id, observed_size_bytes, created_at；复合 PK，版本不复用。 |
-| media_locations | id PK, media_id FK, content_version_id, root_id FK, directory_id FK, relative_path_key, path_display, filename, volume_key?, file_key?, size_bytes, mtime_native, availability, last_seen_run_id FK?, last_seen_at, retired_at?。 |
-| media_metadata | media_id, content_version_id, width?, height?, duration_seconds?, codec?, container?, rotation?；复合 PK/FK。 |
-| media_fingerprints | media_id, content_version_id, algorithm, algorithm_version, kind(quick/full), digest, computed_at；复合 PK(媒体/版本/算法/算法版本/类型)，digest 及包含 digest 的内容键不设 UNIQUE。 |
-| scan_runs | id PK, root_id FK, generation, mode, status, started_at, finished_at?, error_code?；UNIQUE(root_id,generation)。 |
-| scan_directories | run_id FK, directory_id FK, enumeration_status, error_code?；复合 PK，complete 才支持缺失判定。 |
-| scan_candidates | id PK, run_id FK, directory_id FK, relative_path_key, observed_metadata, resolution_status, reconciliation_deadline?。 |
-| scan_candidate_matches | candidate_id FK, media_id FK, rule_version, evidence_kind, evidence_payload；复合 PK(candidate_id,media_id,evidence_kind)。 |
-| identity_resolutions | id PK, candidate_id FK, old_media_id FK?, resulting_media_id FK?, rule_version, decision(matched/new/conservative_split/replacement), evidence_payload, decided_at；无当前人工 relink 入口。 |
-| custom_tags | id PK, name, normalized_name, created_at；重名/层级政策后续用正式 migration 收紧。 |
-| media_custom_tags | media_id FK, tag_id FK, created_at；复合 PK。 |
-| viewer_activations | id PK, creation_request_id UNIQUE, viewer_session_id, media_id FK, surface, ordinal, activated_at, closed_at?；UNIQUE(viewer_session_id,ordinal)。 |
-| like_events | id PK, ingest_seq UNIQUE, request_id UNIQUE, media_id FK, occurred_at, recorded_at, policy_version；无 delta、撤销或 toggle 字段。 |
-| view_events | id PK, ingest_seq UNIQUE, request_id UNIQUE, media_id FK, activation_id FK UNIQUE, occurred_at, recorded_at, policy_version。 |
-| player_sessions | id PK, creation_request_id UNIQUE, media_id FK, content_version_id, activation_id FK, policy_version, state, opened_at, started_at?, ended_at?, start_position?, last_position?, watched_seconds DEFAULT 0, duration_seconds?, real_ended DEFAULT 0, last_sequence, last_evidence_at?。 |
-| play_events | id PK, ingest_seq UNIQUE, request_id UNIQUE, media_id FK, content_version_id, player_session_id FK UNIQUE, policy_version, started_at, qualified_at, ended_at?, start_position, end_position, watched_seconds, completed, end_reason?；只在资格达成后存在。 |
-| playback_states | media_id, content_version_id, position_seconds, duration_seconds?, updated_at, completed, state_version, owner_session_id FK?, last_sequence；复合 PK/FK。 |
-| browse_sessions | id PK, creation_request_id UNIQUE, seed?, order_algorithm_version, filter_snapshot, sort_snapshot, snapshot_at, status, item_count, current_ordinal?, expires_at?；Random 必须 seed。 |
-| browse_session_items | session_id FK, ordinal, media_id FK, content_version_id, frozen_sort_key；PK(session_id,ordinal)，UNIQUE(session_id,media_id)。 |
-| thumbnail_entries | cache_key PK, media_id, content_version_id, variant, generator_version, status, relative_cache_path?, byte_size?, last_accessed_at?。 |
-| playback_cache_entries | cache_key PK, media_id, content_version_id, mode(remux/proxy), profile_version, status, relative_cache_path?, byte_size?, last_accessed_at?。 |
-| jobs | id PK, kind, status, dedupe_key, payload_version, payload, attempts, progress, progress_version, error_code?, created_at, updated_at；活跃 dedupe_key 唯一。 |
-| statistics_rebuild_jobs | id PK, scope, target_media_id FK?, high_watermark, state, per_log_cursors, publish_cursor?, created_at, updated_at；全库最多一个重建，单媒体请求也经同一协调协议。 |
-| statistics_rebuild_base | rebuild_id FK, media_id FK, kind, count；PK(rebuild_id,media_id,kind)，磁盘聚合，不是新事实来源。 |
-| statistics_rebuild_deltas | rebuild_id FK, media_id FK, kind, count；同上 PK，记录重建期间已提交的新增事件计数。 |
+| schema_migrations / app_metadata | v1 ledger 与应用元数据，v2 保留；编号、name、SHA-256 和应用时间可追踪。 |
+| db_sequence | 单行单调序列，媒体创建由 Repository 同事务分配；未来 Event Service 也必须在事件事务内分配 ingest_seq。不是 identity。 |
+| media | id、fingerprint、file_path、file_name、media_type、file_size、created_time、modified_time、imported_at、last_seen_at、width、height、duration、thumbnail_path、like_count、view_count、play_count、last_viewed_at、last_played_at、playback_position、missing，以及 state/current_content_version_id/created_seq。 |
+| media_revisions | PK(media_id,content_version_id)，保存版本大小/指纹。media 当前版本复合 FK 延迟到提交检查；首次插入 trigger 同事务建立初始版本。 |
+| media_locations | 自动记录当前/历史路径、文件名及观察/退役时间；每媒体最多一条未退役记录。位置变化或 superseded 同事务维护，不是第二个 identity。 |
+| system_tags | id、parent_id、source_root、directory_path、name、source=filesystem、last_seen_at；同根复合 FK、唯一目录路径/根、无自引用/环。无固定层级深度上限。 |
+| custom_tags | id、唯一平面 name、created_at、updated_at；可创建/改名/删除，ID 关联保留，永不移动媒体文件。 |
+| media_system_tags / media_custom_tags | PK(media_id,tag_id)，标准多对多与反向索引，禁止逗号字符串或 JSON 代替标签关联。 |
+| like_events | 不可变 id/request_id、media_id、ingest_seq、occurred_at、recorded_at、policy_version；没有 toggle/delta。 |
+| view_events | 在 Like 通用字段之外，activation_id 唯一；同 activation 不能插第二次。 |
+| play_events | id、request/ingest、media/version、唯一 player_session_id、started_at、qualified_at、ended_at、start_position、end_position、watched_seconds、completed、end_reason、policy_version；media/version FK。没有资格判断代码。 |
+| playback_states | PK(media_id,content_version_id)，独立 position_seconds/duration_seconds/completed/updated_at/state_version。media.playback_position 是当前版本的投影，写状态/切版本/删状态均由 trigger 同步，不产生 Play。 |
+| quick_browse_sessions | seed、sort_mode、algorithm_version、filter_json、building/ready/closed、item_count、current_ordinal、created_at；Random 必须 seed。仅存储，不生成随机顺序。 |
+| quick_browse_session_items | PK(session_id,ordinal)、UNIQUE(session_id,media_id)，引用媒体/版本；顺序显式存储，ready 后不可增删改，发布必须 ordinal 连续且 count 一致。 |
+| app_settings | 非空 key PK、受 json_valid 约束的 value_json、updated_at；设置可保存结构化配置，不承载媒体标签关系。 |
 
-所有版本引用用复合 FK 到 media_revisions；media 当前版本 FK 延迟到事务提交校验，初次建 media/revision 同事务完成。事件、activation、player session 的媒体/版本/类型归属也用复合 FK 或等效触发器约束，不能只靠 UI。created_seq 和事件 ingest_seq 均由 db_sequence 在对应业务事务内分配，回滚时一并回滚；计数重建不依赖毫秒时间排序。
+### 唯一性、级联与事实保护
 
-media 每实例一个未 retired 位置，活动路径 (root_id,relative_path_key) 部分唯一；missing 位置保留占位，路径被新实例替代时先退役旧位置。availability 区分 available/missing/unreadable/unavailable；media.state 表示身份实体状态，根离线不擅自改为 missing。不同路径的独立文件不因 hash 或 file ID 聚合。
+- media.id 才是身份，且 id/imported_at/created_seq 不可被 UPDATE 改写。fingerprint 仅有非唯一查询索引；不同路径的同内容实例完全允许。
+- 当前 active file_path 唯一，missing/superseded 仍保留旧行但释放活动路径；这是位置占用约束，不是 identity。路径比较为数据库 BINARY；未来 scanner 必须按平台提供规范化观察值，当前 Repository 不替代磁盘判定。
+- 删除 Custom Tag 或叶 System Tag 只级联关联行，不删除媒体。System Tag 父目录有子节点时 RESTRICT，按观察结果自底向上清理须由未来 scanner 决定，不能把用户标签删除当物理目录删除。
+- 无事件/快照引用的媒体硬删除可级联清理所属版本、位置、状态与标签关联；有事件或快照引用时 RESTRICT，绝不级联删历史。Repository 不提供媒体硬删除/文件删除接口，SQL 测试仅验证规则。
+- like/view 禁止 UPDATE/DELETE；Play 身份/资格事实不可改，仅允许一次终结补全，之后冻结。Source of Truth 始终是三个事件表。
+- 每个事件 INSERT 的 AFTER trigger 在同一 SQLite statement/transaction 内更新对应 Counter Cache，view/play 同时更新 last_* 时间的 MAX；失败、溢出或外层回滚同时撤销事件与缓存。**未来 Event Service 不得再手工 +1，避免重复计数**。
+- 本轮 EventRepository 只读，未暴露事件写入、资格判断、重建或 Tauri 业务 API。未来 Event Service 负责 activation/player session 的资格和请求幂等，以及 D016 重建期间的 delta hook；应先追加正式 migration，再启用这些服务。
+- thumbnail_path 只是可丢弃缓存引用，不是原媒体路径；缓存生成/回收模块尚未实现。playback_position 不是 Play 事实，不能由保存进度创造事件。
+
+### Repository 边界
+
+Database::repositories() 借出类型化、受连接生命周期约束的 Rust Repository，不开放裸连接给 React。MediaRepository 提供插入/按 ID 读/按(imported_at,id) keyset 分页/存储已决位置/缺失状态；不匹配身份、不读文件。CustomTagRepository 提供平面 CRUD、双向分页关系查询及原子替换关联；FK 失败保留原标签集合。
+
+SystemTagRepository 仅接收 trusted ObservedDirectory，检查绝对根、拒绝 root/path 中的 ParentDir（..）、同根及直接物理父路径，并允许读取树/存储已观察关联；没有手工目录创建 UI/Tauri command。路径校验为纯词法检查，不访问磁盘；来源真实性和链接解析由未来 scanner 提供，不声称验证了物理存在。
+
+EventRepository 只读三种日志与计数；QuickBrowseRepository 仅保存调用者给定成员/序号并原子发布，未选择/排序/激活媒体；SettingsRepository 保存结构化 JSON。分页上限 200，默认调用建议 100；所有值参数化，字段列表只来自内部常量。
+
+### 尚未落地的后续表
+
+根库管理/扫描 runs/candidates、活动工作会话、缩略图/播放缓存索引、后台 job 与统计 rebuild base/delta/checkpoint 等仍属于后续实现；当前 activation_id/player_session_id 只有唯一性，尚无工作会话表 FK。后续建立会话表时须正式 migration/backfill，并继续保留媒体/版本 FK 和既有事件事实，不能静默丢弃历史。当前没有 Event Service 或 active rebuild，因此不存在绕过重建 delta 的生产事件入口。
 
 ### 索引、启动与 migration
 
-- 至少索引：当前位置 (directory_id,availability,media_id)、(root_id,last_seen_run_id)、目录 parent_id、closure(descendant_id,ancestor_id)、标签(tag_id,media_id)、fingerprint(kind,algorithm,algorithm_version,digest) 非唯一；事件(media_id,ingest_seq) 与 ingest_seq、任务(status,kind)、会话项(session_id,ordinal)、LRU(status,last_accessed_at)。
+- v2 已有索引：media(imported_at,id)/(like_count,id)/(view_count,id)/(play_count,id)/(missing,id)、非唯一 fingerprint、活动路径部分唯一、位置历史(media_id,id)、System Tag(parent_id,id)、两种标签反向(tag_id,media_id)、三个事件(media_id,ingest_seq)、快照(session_id,ordinal)。扫描代次、closure、后台任务和缓存 LRU 索引随对应未来表新增，不声称当前存在。
 - media(imported_at,id)、(like_count,id)、(view_count,id)、(play_count,id) 等按实际批准排序建立；组合过滤用 EXISTS/半连接避免关系行膨胀，逐项 EXPLAIN QUERY PLAN，不承诺所有组合覆盖索引。
 - 每连接显式 foreign_keys=ON，数据库本地 WAL、写入串行，busy_timeout 初始 2000ms；超时有界重试或返回 retryable busy，不阻塞 UI 线程。事件优先 FULL 同步；WAL/驱动版本初始化时锁定和验证。
 - 普通启动先打开已有 DB、校验/执行必要 migration，再让 UI 查询；后台恢复 interrupted 工作并安排增量扫描。非破坏性启动不重建统计/全库，扫描完成不是 UI 开放条件。必要 migration 若耗时需可响应升级界面，不静默新建空库。
@@ -190,7 +220,7 @@ ActivityService 接收有 sequence 的播放适配证据，去重/拒绝陈旧�
 
 1. 在写协调器执行 BEGIN IMMEDIATE，事务内读取身份/会话及幂等状态。
 2. request_id 已存在且语义载荷相同则返回已有结果，不再计数；冲突载荷拒绝。View activation_id、Play player_session_id UNIQUE 还防止换 request_id 重复记录。
-3. 插入事件，分配 ingest_seq；同事务更新 media 对应 Counter Cache +1。若统计重建 active，同事务写入对应重建 delta；任何一步或 COMMIT 失败整体 rollback，未提交不得应答成功。
+3. 插入事件，分配 ingest_seq；同事务由数据库 trigger 更新 media 对应 Counter Cache +1，服务不得重复累加。若统计重建 active，同事务写入对应重建 delta；任何一步或 COMMIT 失败整体 rollback，未提交不得应答成功。
 4. commit 后才返回/发通知；通知失败不回滚事实，重试/快照查询恢复。整数溢出等错误显式返回，不饱和截断，不忽略约束错误。
 
 like_events/view_events 禁止 UPDATE/DELETE。play_events 的 id、媒体/版本、session、ingest_seq、started_at、qualified_at、request_id 等计数事实不可改、禁止 DELETE；仅允许从未结束到已结束的一次终结补全，watch 总量不得减少，重试一致则幂等、冲突则拒绝，结束后整行冻结。服务和触发器双重约束；终结事务只更新结束元数据，不修改计数，也不分配新计数事件。此规则替代“任何日志字段都不得更新”的旧设计，使一 session 一事件与完整生命周期兼容。
@@ -249,6 +279,8 @@ ready 成员/ordinal 不变，点赞/标签/扫描不重排；新增不插入，
 
 ## Tauri Command / API 边界
 
+本节是后续业务 API 规划；Phase 2 没有新增这些 command。当前注册表仍只有 get_app_status，Rust Repository 方法不等于前端可调用入口。
+
 DTO 版本化，TypeScript strict，Rust 最终校验。ID/计数/sequence 用无损字符串跨 IPC，seconds 使用有限数值。错误形状 {code,message,retryable,requestId?,jobId?}，稳定区分 invalid_input/not_found/permission_denied/unsupported_media/stale_cursor/conflict/busy/cancelled/migration_failed/internal；不向 UI 泄露 SQL/堆栈或多余私人路径。
 
 | API | 输入 → 输出 | 权限与事务 |
@@ -294,7 +326,7 @@ DTO 版本化，TypeScript strict，Rust 最终校验。ID/计数/sequence 用�
 | 14 | 100,000+ 可执行设计 | 通过；keyset/索引/虚拟化/lazy load/独立有界队列；后续实测验收。 |
 | 15 | Phase 1 业务 blocker | 无；未决定的展示/平台 profile/预算属于后续细化，不改变已冻结模型。 |
 
-**Ready for Phase 1: YES（仅基础阶段设计就绪）**。用户本轮明确禁止开始实现，因此 Phase 1 仍未开始。无需等待性能实测或完整页面清单才能设计工程骨架；版本/驱动初始化选择属于 Phase 1 工作，不能擅自改产品语义。
+**Ready for Phase 1: YES（设计就绪）**。用户现已授权 Phase 2 数据层，实际验收见 PLANS.md；后续 scanner 与业务服务未开始。无需等待性能实测或完整页面清单才能建立工程骨架，不能擅自改产品语义。
 
 ## Remaining risks 与后续验证
 

@@ -1,0 +1,4 @@
+[workspace]
+members = ["src-tauri"]
+exclude = ["archive/scaffolds/media-manager-template/src-tauri"]
+resolver = "3"

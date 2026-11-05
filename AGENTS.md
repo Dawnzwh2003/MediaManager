@@ -17,7 +17,7 @@
 
 - media_id 表示逻辑文件实例；path/fingerprint 都不是 identity。独立文件即使摘要相同也不自动去重，fingerprint 值禁止唯一约束。
 - 高置信度移动保留 ID、imported_at、标签、事件与播放状态；不可靠匹配在对账结束后按旧 missing + 新媒体处理。确认同路径替换须新 ID、零历史继承。
-- System Tag 仅反映物理目录层级；Custom Tag 永不改变物理文件位置。原件默认只读。
+- System Tag 仅反映物理目录层级，不提供手工目录创建入口；Custom Tag 无子标签、使用多对多关联，永不改变物理文件位置。禁止逗号字符串保存标签。原件默认只读。
 - Like、View、Play 使用 Event Log；`like_events`、`view_events`、`play_events` 是 Source of Truth，`media` 的统计字段仅为 Counter Cache。
 - 事件插入与 Counter Cache 更新必须在同一个 SQLite transaction 中完成。必须支持从 Event Log 重建全部计数。
 - Like 每主动动作一条事件，无 Boolean/toggle/撤销。View 按 activation 而非 render。Play 仅记录 qualified player session；准确资格及 completed 规则以 REQUIREMENTS.md 为准。
@@ -30,10 +30,11 @@
 - 播放依次 Direct/Remux/Proxy；所有派生资源写应用缓存，内容版本隔离，可回收再生成，永不覆盖原媒体。
 - 用户媒体默认只读；未明确新增相关功能前，不得删除实际媒体文件。缓存清理只能处理应用拥有的缓存目录。
 - Schema 修改必须经可追踪 migration；禁止临时改库绕过 migration。
+- Repository 只承担参数化存储与事务，不做扫描或事件资格判断。事件 Counter Cache 已由数据库 trigger 维护时，未来服务不得再次手工累加；删除级联不得清除事件历史或实际媒体文件。
 
 ## 工程与测试规范
 
-- Rust 使用 `rustfmt`、Clippy 和 `snake_case`；React 组件使用 `PascalCase`，TypeScript 函数与变量使用 `camelCase`，启用严格类型检查。具体工具版本在初始化时锁定。
+- Rust 使用 `rustfmt`、Clippy 和 `snake_case`；React 组件使用 `PascalCase`，TypeScript 函数与变量使用 `camelCase`，启用严格类型检查。工具链策略按 DECISIONS.md 执行；升级记录实际版本并重新验证，依赖版本及锁文件不得伪造。
 - 测试覆盖身份匹配、增量扫描、事件幂等、事务回滚、计数重建、migration、损坏媒体隔离及权限边界。合理的 Bug 修复增加 regression test。
 - 回归须覆盖移动/重命名后的关联保留、播放进度隔离、稳定浏览顺序；规模验收包含 100,000 媒体的分页查询和虚拟 Grid，不以设计推断代替实际测量。
 - 测试使用临时数据库和合成媒体，不依赖真实私人媒体，不修改用户文件。新行为包含正常、失败和恢复场景。

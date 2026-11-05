@@ -1,0 +1,17 @@
+node_modules/
+dist/
+target/
+src-tauri/target/
+src-tauri/gen/
+.tools/
+/data/
+/cache/
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store

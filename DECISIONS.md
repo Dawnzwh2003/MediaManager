@@ -4,7 +4,7 @@
 
 仅收录影响数据模型、架构边界、持久化语义和重要选型的决策，不记录普通实现细节。状态使用：已批准（Approved）、提案、已取代。当前 D001–D017 均为本轮批准规则下的设计基线；实现参数和后续 UX 不能把这些规则重新标成 pending。
 
-日期：2026-11-01。本轮用户正式批准身份、保守匹配、事件语义、播放状态/兼容和规模规则，并要求将一致的 D009–D014 转为 approved，不一致的修改并记录原因。下面保留旧提案/旧审查结论的变更摘要，不把旧语义继续作为现行约束。当前无真实 DB，仅改逻辑设计，无数据迁移执行。
+日期：2026-11-01。用户已批准产品规则并授权 Phase 1，现明确授权 Phase 2 数据层。D018–D020 保留 Phase 1 历史，D021–D024 记录本轮表名、存储与约束选择。原生验证仍受环境限制，不能将 SQL 测试结果等同于 Rust 编译/Repository 测试通过。
 
 ## D001 — 固定技术栈
 
@@ -57,10 +57,10 @@
 
 ## D008 — 设计就绪与实施授权分离
 
-- 状态：**已批准（Approved）**；来源：用户本轮“不要开始 Phase 1”。
-- 决策：本轮仅维护五份文档并复审；Ready=YES 也不创建代码、脚手架、数据库或迁移文件。
+- 状态：**已批准（Approved）**；原则保留，旧轮仅设计的执行范围已由 D018 替代。
+- 决策：Ready=YES 不自动授予实施权限；用户现已明确授权 Phase 2 数据层，仍不自动授予 scanner 或其他阶段权限。
 - 变更：旧“完整页面/所有未来问题未定即 NO”的门槛已收窄；仅真正改变 Phase 1 基础架构的业务 blocker 可阻止放行。性能实测属于后续验收。
-- 影响：当前 Phase 1 未开始，等待后续开始指令，不把设计批准等同于实现批准。
+- 影响：实施与验收分别记录；本轮范围以 D021 为准，不把设计批准等同于全部实现已验收。
 
 ## D009 — 内容版本与独立 Playback State
 
@@ -108,7 +108,7 @@
 - 决策：SQLite keyset/索引、约 100 项分页、虚拟 Grid/lazy thumbnails、有界缓存和独立后台队列；启动优先 DB/UI，不等全库扫描。
 - 理由：禁止无界对象加载、全库前端排序和无界 FFmpeg，确保可执行的规模设计。
 - 变更原因：原全库统计单写事务与 UI/资源约束冲突，采用 D016；原 review 的 NO 由本轮已批准语义及新 15 项复审取代。
-- 当前结论：**Ready for Phase 1: YES**。性能/兼容实测留作对应 Phase 验收，不把未测量误当业务 blocker；本轮仍不开始实现。
+- 设计结论：**Ready for Phase 1: YES**。性能/兼容实测留作对应 Phase 验收；用户后续已授权 Phase 1，实际实现状态见 PLANS.md。
 
 ## D015 — Direct / Remux / Proxy 三层播放
 
@@ -134,6 +134,70 @@
 - completed：有效 duration 下 progress>=95% OR remaining<=min(10s,duration*5%)；未知/无效时长 false、可后续按有效元数据计算。95% 完成不等于短视频真实 ended 资格。
 - 影响：like/view 仍不可变；Play 触发器限制终结允许字段和状态。playback_states 独立存相同完成定义，但不能用另一个会话的进度覆盖本事件终结数据。
 
-## 后续事项（非当前 Phase 1 blocker）
+## D018 — Phase 1 授权与最小 Schema 范围
+
+- 状态：**已批准（Approved）**；来源：用户最新“现在开始 Phase 1，只实现 Phase 1”。
+- 决策：只建立基础模块、SQLite/migration、运行目录、统一错误和 get_app_status；不实现 scanner、媒体查看/播放、标签、活动和 Quick Browse。
+- 变更原因：旧计划把媒体/事件全部 Schema 提前列入 Phase 1，与最新“最小干净骨架”范围不符；v1 仅含 ledger/app_metadata，未来按所属 Phase 正式迁移，不改变批准的总体数据模型。
+- 历史影响：当时不安装/运行 FFmpeg、不创建 cache/playback，Phase 2 未开始；现已由 D021 明确授权数据层，仍不包含 scanner/业务服务。
+
+## D019 — Phase 1 存储生命周期与阻塞工作隔离
+
+- 状态：**实施决策**；在用户授权的 Phase 1 范围内细化 D005。
+- 决策：rusqlite bundled SQLite；Tauri app_local_data_dir 下 data/cache/thumbnails；唯一状态用例通过 spawn_blocking，Mutex 串行化连接和初始化，文件锁存活至连接关闭。
+- 理由：无需前端 SQL 或外部 SQLite 安装，避免 UI 线程做文件/数据库 I/O；最小阶段不引入未使用的读连接池/通用任务系统。
+- 影响：SQLite 原生编译仍需要 C 工具链。后续有业务负载再按既定模块边界扩展写协调器及有界读连接，不将状态服务演变成巨型业务服务。
+- 迁移策略：先校验历史再改变 WAL；版本/name/SHA-256/时间追踪，每 migration 与 ledger 同事务；现有库升级前 online backup，未知/损坏库拒绝。ledger 自举 DDL 是框架基础，业务 DDL 只来自编号 SQL。
+
+## D020 — 依赖版本与验证诚实性
+
+- 状态：**历史实施决策**；其中 Rust 1.90.0 pin 已由用户最新授权的 D025 替代，其余依赖和验证诚实性原则保留。
+- 决策：固定 Rust 1.90.0，Cargo resolver 3 按 MSRV 解析；直接依赖精确版本见 manifest。Node 基线 >=22.18，当前 24.22.2。Tauri 2.12.5 / tauri-build 2.7.4，rusqlite 0.41.1；前端 React 19.3.1 / Vite 8.3.5 / TypeScript 7.0.2，来源已核对官方版本。
+- 理由：避免初始依赖隐式漂移，rusqlite API 以所选版本为准；无桌面特性可单独测试基础后端，但不能替代桌面链路验证。
+- 限制：当前终端无 Rust/Cargo、MSVC/SDK；npm 请求被系统 EACCES 拒绝。不能获取完整依赖、生成真实 npm/Cargo 锁文件或完成原生构建，因此 Phase 1 必须保持待验证，不能以静态审查冒充通过。
+- 后续：环境补齐后生成并提交两个真实 lockfiles、执行全部要求检查/修复和桌面 smoke，再更新验收。不得用虚假类型声明、stub React/SQLite 或跳过错误脚本获取“绿色构建”。
+
+## D021 — Phase 2 只实现数据模型与数据库层
+
+- 状态：**用户已授权**；替代原 PLANS 中 Phase 2 自动包含 scanner 的执行范围。
+- 决策：通过新 migration v2 建立指定十类表、必要关系/版本辅助表和 Rust Repository；不实现 scanner、Event Service 或 UI 业务，不新增业务 Tauri command。
+- 理由：用户明确要求先验证数据结构与数据库行为，不应提前实现业务资格或文件遍历。
+- 影响：Phase 1 原生验证限制不被抹去；仅推进已明确授权的数据层。scanner 改为另行授权的 Phase 2b，完成后停止。
+
+## D022 — 当前媒体快照与历史/版本分离
+
+- 状态：**实施决策**；按用户明确字段要求细化 D002/D009。
+- 决策：media 存放指定的当前字段，id/imported_at/created_seq 不可改；fingerprint 非唯一，活动路径仅作占位约束。media_revisions 独立版本，media_locations 由 trigger 记录位置历史；不是 path/hash identity。
+- 变更理由：原草图把当前 path/metadata 完全分表，现需要直接可查询的 media 记录；保留历史实体和 FK，而非丢弃已确认身份模型。playback_position 只是当前版本 playback_states 的投影。
+- 影响：新表只经 0002 创建，0001 不改。时间点毫秒、播放单位秒；未知元数据 NULL，计数/进度默认零。不存在原文件操作或自动 identity matching；同路径替换仍需新 ID，旧 superseded。
+
+## D023 — 目录投影、平面标签和删除策略
+
+- 状态：System/Custom 规则**用户明确批准**；唯一性/级联细节为实施决策。
+- 决策：system_tags 替代 directories 命名，parent_id+source_root 复合 FK、防环/唯一目录；Repository 只接收绝对根内的直接父子观察，不能手工建立 UI 目录。Custom Tag 无 parent_id，trim 后非空、SQLite NOCASE 名称唯一，标准关联表双向索引。
+- 理由：一个事实来源，避免字符串标签和虚拟目录混入物理结构。ASCII 大小写不敏感、非 ASCII 精确比较的行为明确而可测试。
+- 影响：标签删除 CASCADE 关联行，System 父节点有子节点则 RESTRICT；媒体如有事件或快照引用则 RESTRICT，不能级联删除历史。无历史媒体的关联/版本/位置/状态可随数据库行删除清理，但 Repository 不开放媒体硬删除，更不删原文件。
+
+## D024 — 数据库 trigger 保证事件与缓存原子性
+
+- 状态：**实施决策**；细化 D003，不增加 Event Service。
+- 决策：三类日志 INSERT 的 trigger 同事务更新各自 Counter Cache；view/play 同步 last_*。日志不可变及 Play 一次终结约束由数据库保护。EventRepository 只读，不提供记录/资格/重建方法。
+- 理由：只有表却无一致性入口容易产生“事件已插、缓存未更新”；以数据库约束覆盖所有未来写入口，并测试溢出/外层 rollback。以后服务**不得重复执行 +1**。
+- 影响：未来 Event Service 负责资格/幂等和 sequence 分配，统计 rebuild 的 delta 捕获仍需后续正式 migration 接入；当前没有 active rebuild 或业务事件入口。当前 FK 保护媒体/内容版本；工作 activation/player session 表尚未引入，后续加 FK 必须迁移/回填，不丢日志。
+
+## D025 — 用户授权切换最新稳定 Rust，并安装本地开发依赖
+
+- 日期：2026-11-02；状态（2026-11-04 复验）：**用户已授权，Rust 配置已实施；npm/Cargo 依赖与真实锁文件已到位，命令行及真实桌面检查通过，浏览器预览专项待补**。
+- 来源：用户询问使用 Rust 最新版本替代，并要求代装 typecheck/Tauri。
+- 决策：rust-toolchain.toml 从 1.90.0 改为 stable，使用已安装的稳定编译器；本轮本机 rustc/cargo 为 1.99.1，且 [Rust 官方 stable 源版本](https://raw.githubusercontent.com/rust-lang/rust/stable/src/version) 同为 1.99.1。不修改 Cargo.toml 的声明最低版本 1.90，不宣称该最低版本已测试。
+- 原因：旧 pin 未安装，而用户现已明确授权升级；这不同于前两轮未经许可为避错更换编译器。无需重新安装本机已有的最新 stable，不改用户全局默认或产品数据模型。
+- 影响：stable 通道可随 rustup 更新；后续升级记录实际 rustc/cargo 版本，并重新跑完整检查。此政策按用户授权替代固定编译器策略，不等于依赖闭包已经锁定或新版兼容性全部通过。
+- TypeScript/Tauri CLI：manifest 声明精确本地版本。先前 npm install 和指定包安装因 EACCES 失败；目录整理复验时，用户环境中的十个直接依赖及真实 package-lock.json 已到位，npm ls、typecheck、frontend build、Tauri info 均成功。没有全局安装、虚假 tsc/tauri stub 或绕过类型检查脚本，也未修改依赖版本。
+- 目录整理时验证进展：普通 cargo fmt --all -- --check、独立路径 Rust 测试 4/4、npm test 30/30 成功；当时 cargo check/test/Clippy 和 Tauri dev/build 均在 index.crates.io 下载 config.json 时失败。原始结果见 [目录整理复验](docs/validation/organization-2026-11-02.md)。目录整理仅改变工程布局，不新增技术决策或数据迁移。
+- 2026-11-02 完整复验：网络错误确认为执行沙箱限制；经批准在沙箱外下载正式 Rust 依赖，生成真实 Cargo.lock，直接版本未变。cargo check、两种 feature 配置的测试各 24/24、Clippy 和正式 Tauri release 构建均通过；Node 30/30 与新增 Vite 监听回归 1/1 通过。当时真实桌面 IPC/smoke 因 UI 工具自动审批检查终止而未完成，历史结果见 [11-02 记录](docs/validation/retest-2026-11-02.md)。
+- 2026-11-04 复验：工具链、依赖和 migration 均未变；上述命令行检查再次通过，并以独立测试目录通过真实桌面 IPC、刷新、重启、WebView 重载、第二实例 busy 与锁释放后重试恢复。仅浏览器预览的 URL/窗口读取再次被自动审批检查终止；Phase 2 当前数据层在 Windows 上验收，Phase 1 浏览器专项仍待补。证据见 [本次测试记录](docs/validation/phase12-2026-11-04.md)，不自动推进下一阶段。
+- 数据库影响：无 Schema/migration 或业务变更。继续停留 Phase 2 数据层，不实现 Event Service/scanner。
+
+## 后续事项
 
 版本/驱动选型在 Phase 1 锁定；平台播放 profile/许可在 Phase 3 验证；页面、标签展示、Quick Browse 保留 UX 在 Phase 4 细化；性能预算和实测在相关 Phase/最终规模验收完成。未来 manual relink、原文件编辑/删除或内容聚合必须另立决策和迁移，不是当前功能。当前无待冻结的身份或 Like/View/Play 核心业务语义。
