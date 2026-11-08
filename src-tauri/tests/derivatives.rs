@@ -372,7 +372,10 @@ fn background_worker_recovers_interruption_and_keeps_status_queries_available() 
     let deadline = Instant::now() + Duration::from_secs(5);
     while db.request_thumbnail(&id, false).unwrap().status != "failed" {
         assert!(Instant::now() < deadline);
-        assert_eq!(db.status().unwrap().schema_version, 4);
+        assert_eq!(
+            db.status().unwrap().schema_version,
+            media_manager::db::migrations::CURRENT_SCHEMA_VERSION
+        );
         std::thread::sleep(Duration::from_millis(10));
     }
     drop(worker);

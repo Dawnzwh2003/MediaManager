@@ -22,6 +22,13 @@ pub fn run() -> tauri::Result<()> {
             app.manage(Arc::new(services::app_status::AppState::new(root)));
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![commands::get_app_status])
+        .invoke_handler(tauri::generate_handler![
+            commands::get_app_status,
+            commands::query_library,
+            commands::get_media_details,
+            commands::list_library_tags,
+            commands::mutate_custom_tag,
+            commands::get_thumbnails
+        ])
         .run(tauri::generate_context!())
 }

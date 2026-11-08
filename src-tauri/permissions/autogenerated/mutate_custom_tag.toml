@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-mutate-custom-tag"
+description = "Enables the mutate_custom_tag command without any pre-configured scope."
+commands.allow = ["mutate_custom_tag"]
+
+[[permission]]
+identifier = "deny-mutate-custom-tag"
+description = "Denies the mutate_custom_tag command without any pre-configured scope."
+commands.deny = ["mutate_custom_tag"]

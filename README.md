@@ -1,6 +1,6 @@
 # Media Manager
 
-Tauri + React + TypeScript + Rust + SQLite 项目。当前有状态页、数据模型/Repository、scanner，以及 Phase 4 metadata 与后台 thumbnail cache；没有 Event Service、媒体查看/播放、标签 UI 或 Quick Browse 业务。React 仍只有 `get_app_status`。
+Tauri + React + TypeScript + Rust + SQLite 项目。当前有 scanner、metadata/thumbnail cache，以及 Phase 5 基础 Media Library：递归目录筛选、虚拟网格、metadata 详情和平级 Custom Tag CRUD/批量关联。Like Count 仅展示；没有 Like Event 写入、播放器或 Quick Browse 业务。
 
 ## 环境与安装
 
@@ -89,7 +89,15 @@ React → `src/api/app-status.ts` → `get_app_status` → 阻塞 worker → Rus
 - `schema_migrations` 为 runner 自举表；每份编号 SQL 与对应记录同一事务。SQL 失败由事务回滚，下一次从最后已提交版本继续。
 - 既有库升级前通过 SQLite backup API 保存包含 WAL 数据的一致性备份，成功后才迁移。备份失败不继续升级，回退使用备份，不承诺自动降级。
 - 已应用 SQL 不修改。新增 migration 必须加入 runner 的静态清单；名称、SHA-256 与应用时间记录在库中。`.gitattributes` 固定 LF，避免换行改变校验和。
-- 当前 schema=4；v1/v2/v3 保留，0004 增加基础播放 metadata 与 media_derivatives 状态队列，旧无版本缩略图引用失效再生，不影响历史数据。
+- 当前 schema=5；旧 migration 不变，0005 增加 Library 查询代次和索引。升级前自动备份，保留媒体身份、历史、标签及播放状态。
+
+## Phase 5 基础 Media Library
+
+侧栏目录按真实 System Tag 树展开，父目录筛选默认包含后代；Custom Tag 是独立平面列表。文件名搜索、类型筛选和最近导入/文件名/Like Count 排序均在 SQLite 执行。每页 100 项 keyset 查询，换页释放旧数据，虚拟行和 lazy thumbnail 只请求可见缩略图，不加载原始高清媒体。
+
+点击卡片打开 DetailsPanel；侧栏 ＋ 管理 Custom Tags，详情编辑单个媒体标签，复选框多选后可批量添加/移除（最多 200 项）。所有编辑仅修改数据库关联。库在扫描或标签编辑后发生变化，旧分页游标返回 stale_cursor，点击重新加载从当前结果首页恢复。
+
+`tests/ui/library.html?run=1` 是开发专用合成 UI 回归入口，不属于产品数据，也不代表真实 IPC；通过独立 Tauri 配置可执行该测试。真实链路验证的合成数据由 `cargo run --locked --no-default-features --example seed_library_validation` 创建，严格限制在本 checkout 的 `.tools/validation/phase5-native/`，已有测试数据库时拒绝覆盖。测试完成后关闭隔离应用，并确认 Vite 的 1420 端口释放。
 
 ## Phase 4 Metadata 与 Thumbnail
 

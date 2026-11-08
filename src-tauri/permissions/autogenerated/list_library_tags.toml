@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-list-library-tags"
+description = "Enables the list_library_tags command without any pre-configured scope."
+commands.allow = ["list_library_tags"]
+
+[[permission]]
+identifier = "deny-list-library-tags"
+description = "Denies the list_library_tags command without any pre-configured scope."
+commands.deny = ["list_library_tags"]

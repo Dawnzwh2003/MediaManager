@@ -28,10 +28,19 @@ test("frontend IPC imports stay in api and no SQL/filesystem/shell plugin is ins
   }
 });
 
-test("only the local main window can invoke the health command", async () => {
+test("only the local main window can invoke library queries and custom tag edits", async () => {
   const capability = JSON.parse(await readFile(path.join(root, "src-tauri/capabilities/main.json"), "utf8"));
   assert.equal(capability.local, true);
   assert.deepEqual(capability.windows, ["main"]);
-  assert.deepEqual(capability.permissions, ["allow-get-app-status"]);
+  assert.deepEqual(capability.permissions, ["allow-get-app-status", "allow-query-library", "allow-get-media-details", "allow-list-library-tags", "allow-mutate-custom-tag", "allow-get-thumbnails"]);
   assert.equal(capability.remote, undefined);
+});
+
+test("asset access is restricted to generated JPEG thumbnails", async () => {
+  const config = JSON.parse(await readFile(path.join(root, "src-tauri/tauri.conf.json"), "utf8"));
+  assert.deepEqual(config.app.security.assetProtocol, { enable: true, scope: ["$APPLOCALDATA/cache/thumbnails/*.jpg"] });
+  for (const csp of [config.app.security.csp, config.app.security.devCsp]) {
+    assert.ok(csp.includes("img-src 'self' asset: http://asset.localhost"));
+    assert.ok(!csp.includes("file:"));
+  }
 });

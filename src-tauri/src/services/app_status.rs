@@ -19,6 +19,15 @@ pub struct AppState {
 }
 
 impl AppState {
+    #[cfg(feature = "desktop")]
+    pub(crate) fn database(&self) -> AppResult<Database> {
+        self.status()?;
+        let slot = self.runtime.lock().map_err(|_| AppError::Internal)?;
+        slot.as_ref()
+            .ok_or(AppError::Internal)?
+            .database
+            .background_connection()
+    }
     pub fn new(root: PathBuf) -> Self {
         Self {
             root,

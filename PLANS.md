@@ -1,6 +1,10 @@
 # 分阶段开发计划
 
-## 当前状态（2026-11-08）
+## 当前状态（Phase 5）
+
+用户已授权的基础 Media Library 已完成，前后端测试及隔离桌面 UI/真实 IPC 验收通过。上轮 Vite/独立 Chrome 残留已清理，修复 UI 夹具的 DOM 等待竞态后复验；结束时测试窗口全部关闭，1420 无监听。本轮停止，不实施 Like Event、播放器或后续阶段。
+
+## Phase 4 验收历史（2026-11-08）
 
 用户本次授权的 **Phase 4 = metadata 与 thumbnail cache 已完成**，替代旧路线的同名编号范围。全套适用测试通过，结果见下方 Phase 4；本轮到此停止，不推进播放或浏览 UI。此前 Phase 1 浏览器专项的限制保留，不把历史记录视为本轮阻塞或实施范围。
 
@@ -182,7 +186,16 @@ Phase 0 已将用户批准规则写入设计并通过 15 项 architecture review
 - 相同 seed/成员/算法可复现；ready 会话分页/扫描/点赞/改标签/重渲染不重排，新增不插入、缺失项不压缩；building 不可见；有界 spool/会话配额与可取消构建成立。
 - 冻结页面/MVP、搜索字段、标签重名/祖先 UX、会话保留和恢复交互；追加约束走 migration，不反改已批准业务语义。
 
-## Phase 5 — Activity、Playback State 与 Statistics
+## Phase 5 — 基础 Media Library（当前授权）
+
+- **状态：实现与本轮 Windows 验收完成，停止。** 六个组件、只读树形 System Tags/递归父目录筛选、平级 Custom Tag CRUD/单项与批量关联、类型化查询 API 已实施。
+- 每页 100 条 keyset，SQLite 筛选/排序，陈旧游标明确拒绝；前端仅保存当前页及有界游标历史，可见行虚拟化，lazy thumbnail 批量请求，不读取原始高清图。Like Count 只读，无 Event 或播放器实现。
+- 新增 v5 migration（查询代次/索引），保留历史 migration。Custom Tag 批次事务失败回滚，原媒体/目录关系/事件均不变；asset scope 只开放缓存 JPEG。
+- 最终通过前端 Node 37/37、开发监听 1/1、backend 两种 feature 配置各 45/45（包含真实 FFmpeg）、严格 build/Clippy/fmt/diff-check；后端 100,000 合成媒体 1000 页无漏项，首次实测 query p50=0.475ms、p95=0.658ms、末页=0.442ms（本机热查询，非全平台性能承诺）。
+- 清理后使用 Phase 1 隔离 Tauri 方式完成 UI 11/11 DOM 断言（含双媒体批量增删、分页/虚拟化）；修复夹具在标签内存更新后过早查 DOM 的竞态，不删除或跳过断言。另用 111 个合成媒体通过正式 SQLite/Tauri IPC、递归目录筛选、100＋11 分页、真实 thumbnail/视频 metadata 与标签添加验收，原图摘要不变、事件数仍为零。
+- 上轮 Chrome browser host/URL 审批问题仍作为通道限制保留，不宣称它已修复；本轮原生桌面验收已独立通过。测试结束两个 Tauri 进程正常退出、测试窗口为空、1420 无监听。详见 [Phase 5 验证与截图](docs/validation/phase5-validation.md)。
+
+## 后续路线 — Activity、Playback State 与 Statistics（未授权）
 
 - **状态：未开始**；依赖：Phase 1、Phase 4；资格语义已经冻结，不再以旧 Q03–Q05 阻塞。
 - Like：五次主动动作产生五事件，相同动作重试只一次；无 toggle/撤销。View：A→B→A 三次，render/resize/fullscreen/预加载零次。
@@ -203,4 +216,4 @@ Phase 0 已将用户批准规则写入设计并通过 15 项 architecture review
 
 主路径 0→1→2→3→4→5→6；数据层接口可在依赖已满足时细化，不能因阶段重排绕过事务和模块边界。每次推进记录完成范围、实际验证命令/结果和剩余风险。
 
-当前授权以本次 Phase 4 metadata/thumbnail 指令为准；完成全套验证并更新本计划后停止。Phase 1 浏览器专项未完成如实保留，不能自动推进 Event Service、播放器或浏览 UI。阶段授权与阶段验收分别记录。
+当前授权以 Phase 5 基础 Media Library 指令为准；完成前后端测试及本次重试后停止。Phase 1 浏览器通道的未验收记录继续保留，不能自动推进 Event Service 或播放器。阶段授权与阶段验收分别记录。

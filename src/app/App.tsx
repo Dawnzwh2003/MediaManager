@@ -1,63 +1,36 @@
-import { useEffect, useState } from "react";
-import { getAppStatus } from "../api/app-status";
-import { toApiError } from "../api/contracts.ts";
-import type { ApiError, AppStatus } from "../api/contracts.ts";
-
-type State =
-  | { kind: "loading" }
-  | { kind: "ready"; status: AppStatus }
-  | { kind: "error"; error: ApiError };
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { libraryApi } from "../api/library.ts";
+import type { LibraryFilter, TagMutation } from "../api/library-contracts.ts";
+import { Sidebar } from "../library/Sidebar.tsx";
+import { FilterBar } from "../library/FilterBar.tsx";
+import { MediaGrid } from "../library/MediaGrid.tsx";
+import { DetailsPanel } from "../library/DetailsPanel.tsx";
+import { TagSelector } from "../library/TagSelector.tsx";
+import { LibraryController, MAX_SELECTION, toggleSelection } from "../library/model.ts";
 
 export function App() {
-  const [state, setState] = useState<State>({ kind: "loading" });
-  const [attempt, setAttempt] = useState(0);
-
-  useEffect(() => {
-    let active = true;
-    setState({ kind: "loading" });
-    getAppStatus().then(
-      (status) => { if (active) setState({ kind: "ready", status }); },
-      (error: unknown) => { if (active) setState({ kind: "error", error: toApiError(error) }); },
-    );
-    return () => { active = false; };
-  }, [attempt]);
-
-  return (
-    <main className="shell">
-      <header>
-        <span className="eyebrow">PHASE 1 · FOUNDATION</span>
-        <h1>Media Manager</h1>
-        <p className="intro">本地图片与视频管理，从可靠的基础开始。</p>
-      </header>
-      <section className="status-card" aria-labelledby="status-heading" aria-live="polite" aria-busy={state.kind === "loading"}>
-        <h2 id="status-heading">应用状态</h2>
-        {state.kind === "loading" && <p role="status">正在连接本地基础服务…</p>}
-        {state.kind === "error" && (
-          <div role="alert">
-            <p>{state.error.message}</p>
-            <small>错误代码：{state.error.code}</small>
-          </div>
-        )}
-        {state.kind === "ready" && (
-          <>
-            <p className="ready">本地基础服务已就绪</p>
-            <dl>
-              <div><dt>应用版本</dt><dd>{state.status.appVersion}</dd></div>
-              <div><dt>数据库版本</dt><dd>{state.status.database.schemaVersion}</dd></div>
-              <div><dt>SQLite</dt><dd>{state.status.database.sqliteVersion}</dd></div>
-              <div><dt>运行目录</dt><dd>{Object.values(state.status.storage).every(Boolean) ? "已就绪" : "异常"}</dd></div>
-            </dl>
-          </>
-        )}
-        <button
-          type="button"
-          disabled={state.kind === "loading"}
-          onClick={() => setAttempt((value) => value + 1)}
-        >
-          {state.kind === "error" ? "重试连接" : "刷新状态"}
-        </button>
-      </section>
-      <footer>应用骨架 · 媒体管理功能将在后续阶段加入</footer>
-    </main>
-  );
+  const controller = useMemo(() => new LibraryController(libraryApi.query), []);
+  const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [focused, setFocused] = useState<string | null>(null);
+  const [revision, setRevision] = useState(0);
+  const [modal, setModal] = useState<"manage" | "batch" | null>(null);
+  useEffect(() => { void controller.refresh(); return controller.cancel; }, [controller]);
+  const change = useCallback((filter: LibraryFilter) => { setSelected(new Set()); setFocused(null); void controller.change(filter); }, [controller]);
+  const refresh = useCallback(() => { setRevision(r => r + 1); void controller.refresh(); }, [controller]);
+  const changed = useCallback((mutation?: TagMutation) => {
+    setRevision(r => r + 1);
+    const filter = controller.getSnapshot().filter;
+    if (mutation?.action === "delete" && mutation.id === filter.customTagId) void controller.change({ ...filter, customTagId: null }); else void controller.refresh();
+  }, [controller]);
+  useEffect(() => { const close = (event: KeyboardEvent) => { if (event.key === "Escape") setModal(null); }; window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, []);
+  return <main className="library-shell"><Sidebar filter={state.filter} onFilter={change} revision={revision} onManage={() => setModal("manage")} />
+    <section className="library-main" aria-label="Media Library"><header className="library-header"><div><span className="eyebrow">YOUR COLLECTION, IN FOCUS</span><h1>媒体库<span className="heading-dot">.</span></h1><p>把目光留给内容，把整理交给标签。</p></div><span className="local-badge"><span className="status-dot" /> LOCAL LIBRARY</span></header>
+      <FilterBar filter={state.filter} change={change} refresh={refresh} loading={state.loading} />
+      <div className="collection-toolbar"><div><span className="collection-title">{state.filter.systemTagId ? "目录与所有子目录" : state.filter.customTagId ? "标签中的媒体" : "All Media"}</span><span className="muted small">{state.loading ? "正在查询…" : `本页 ${state.items.length} 项`}</span></div><div className="selection-actions">{selected.size > 0 ? <><span className="small">已选 {selected.size}/{MAX_SELECTION}</span><button className="text-button" onClick={() => setModal("batch")}>批量编辑标签</button><button className="text-button" onClick={() => setSelected(new Set())}>清空</button></> : <button className="text-button" disabled={state.loading || !state.items.length} onClick={() => setSelected(new Set(state.items.map(m => m.id)))}>选择本页</button>}</div></div>
+      {state.error ? <div className="library-empty" role="alert"><span className="empty-symbol">▧</span><h2>{state.error.code === "desktop_required" ? "在桌面端打开你的媒体库" : state.error.code === "stale_cursor" ? "媒体库已有更新" : "暂时无法读取媒体库"}</h2><p>{state.error.message}</p><button className="primary" onClick={refresh}>重新加载</button></div> : state.loading ? <div className="library-empty" role="status"><span className="loading-ring" /><p>正在读取本地媒体…</p></div> : state.items.length ? <MediaGrid items={state.items} selected={selected} focused={focused} toggle={id => setSelected(s => toggleSelection(s, id))} open={setFocused} revision={revision} /> : <div className="library-empty"><span className="empty-symbol">▦</span><h2>{state.filter.search || state.filter.mediaType || state.filter.systemTagId || state.filter.customTagId ? "没有匹配的媒体" : "从一份收藏开始"}</h2><p>{state.filter.search || state.filter.mediaType || state.filter.systemTagId || state.filter.customTagId ? "试试其他关键词、类型或标签。" : "扫描入库的图片与视频会显示在这里。"}</p></div>}
+      <footer className="library-footer"><span>仅显示缩略图 · 原件只读</span><div><button className="secondary" disabled={state.loading || !state.previous || !!state.error} onClick={() => { void controller.previous(); }}>← 上一页</button><span className="small">第 {state.page} 页</span><button className="secondary" disabled={state.loading || !state.next || !!state.error} onClick={() => { void controller.next(); }}>下一页 →</button></div></footer>
+    </section><DetailsPanel id={focused} close={() => setFocused(null)} revision={revision} changed={changed} />
+    {modal && <div className="modal-backdrop" onClick={e => { if (e.target === e.currentTarget) setModal(null); }}><section className="tag-modal" role="dialog" aria-modal="true" aria-labelledby="tag-modal-title"><div className="panel-heading"><div><span className="eyebrow">CUSTOM TAGS</span><h2 id="tag-modal-title">{modal === "manage" ? "管理你的标签" : `为 ${selected.size} 项批量编辑标签`}</h2></div><button className="icon-button" onClick={() => setModal(null)} aria-label="关闭标签窗口" autoFocus>×</button></div><TagSelector key={modal} manage={modal === "manage"} mediaIds={modal === "batch" ? [...selected] : []} revision={revision} changed={changed} /></section></div>}
+  </main>;
 }

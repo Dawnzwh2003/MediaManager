@@ -13,6 +13,8 @@ pub enum AppError {
     Validation(String),
     #[error("record was not found")]
     NotFound,
+    #[error("library cursor is stale or belongs to another query")]
+    StaleCursor,
     #[error("invalid persisted JSON: {0}")]
     Json(#[from] serde_json::Error),
     #[error("migration validation failed: {0}")]
@@ -37,6 +39,7 @@ impl AppError {
         let (code, message, retryable) = match self {
             Self::Validation(_) => ("invalid_input", "输入的数据不符合约束。", false),
             Self::NotFound => ("not_found", "记录不存在。", false),
+            Self::StaleCursor => ("stale_cursor", "媒体库已更新，请刷新当前列表。", true),
             Self::Json(_) => ("invalid_data", "保存的数据格式不正确。", false),
             Self::Io(_) => ("storage_unavailable", "无法访问应用运行目录。", true),
             Self::Storage(_) => (

@@ -355,6 +355,17 @@ DTO 版本化，TypeScript strict，Rust 最终校验。ID/计数/sequence 用�
 - [FFmpeg 输入 seek 与单帧输出](https://ffmpeg.org/ffmpeg.html)。
 - [FFmpeg protocol_whitelist](https://ffmpeg.org/ffmpeg-protocols.html)。
 
+## Phase 5 基础 Library 边界
+
+- schema v5 新增 library_generation 与 state+recent/name/likes 查询索引，保留 v1–v4 原 SQL；媒体排序/筛选事实、目录/标签关联变化使游标代次失效。metadata/thumbnail 进度不改变排序代次。
+- query_library 使用短读事务、默认前端 100 项/后端上限 200 的 keyset；游标携带 generation、filter/sort signature、排序值与稳定 ID。System Tag 以递归 CTE 包含 descendants，EXISTS 避免多标签重复。搜索只在 SQLite 对文件名作字面 substring（ASCII lower 大小写折叠），不在前端排序/过滤全库。
+- list_library_tags 按层级/ID 分页；System 仅查 children，前端展开时按需查询。Custom 无 parent，支持标签搜索及指定媒体的 attached 状态。卡片每媒体最多附 8 个标签及完整数量；详情的 TagSelector 用分页查询访问其余标签。
+- mutate_custom_tag 只操作 custom_tags/media_custom_tags。批次最多 200 个媒体、10 个标签且最多 1000 个组合；单事务先验证活动媒体/标签，失败整体回滚，幂等 add/remove 不改任何物理文件或事件表。
+- 六个组件通过 src/api 内的类型化调用访问后端；command 用 spawn_blocking 和独立短连接，共享应用 lifetime 实例锁，AppState 只负责连接生命周期。无 SQL/fs/shell 前端权限，无 System Tag mutation、Like/Event 或播放器入口。
+- 网格每页最多 100 项，换页替换旧数据；可见行加 2 行 overscan，图片 loading=lazy/decoding=async。选择最多 200 项，历史游标最多 256。缩略图对可见集合批量请求（上限 100），pending 每 2 秒有界重查，离开视图取消后续轮询；仅受验证的缓存 JPEG 经 asset protocol 展示。
+- asset protocol 仅开放 $APPLOCALDATA/cache/thumbnails/*.jpg，CSP 仅增加 asset:/http://asset.localhost 图片来源，不给原媒体目录资源权限。Tauri protocol-asset feature 引入真实锁定 http-range 0.1.6，不变更既有版本或伪造锁文件。
+- 测试入口 tests/ui/library.html 使用合成、按需生成数据和测试用 API adapter，仅供开发验证，不被产品入口或 production build 导入，也不修改原生 Tauri internals。真实桌面验收使用独立 identifier 与 appDirectoriesOverride，沿用 Phase 1 隔离方式；不能把 mock UI 通过等同真实 IPC 通过。
+
 ## 技术依据
 
 - [Tauri Capabilities](https://tauri.app/security/capabilities/) 与 [Command Scopes](https://tauri.app/security/scope/)：权限配置及命令内部校验。

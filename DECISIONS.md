@@ -207,6 +207,14 @@
 - 迁移：既有数据库升级前备份，新增列及队列表，为活动媒体排队，旧无版本 thumbnail_path 清空后再生；不改旧 migration、身份/事件/标签/播放进度。内容变化 trigger 失效，发布 CAS 防止迟到 worker 覆盖；文件 miss/中断可恢复，失败显式 retry。LRU、播放器和业务 UI 不属于本轮。
 - 验证：临时数据库/合成媒体，真实 FFmpeg/ffprobe 9.0.2；实际结果见 PLANS.md 和本次验证记录。测试工具只放忽略的 .tools，不修改系统 PATH，也不视为发布许可核查。
 
+## D027 — Phase 5 有界 Library 查询与 Custom Tag 编辑
+
+- 状态：用户明确授权；本次 Phase 5 指基础 Media Library，旧 Activity/播放器路线不随编号获得授权。
+- 决策：v5 migration 加查询代次和 state+排序索引，keyset 游标绑定 filter/sort/generation；父 System Tag 默认递归包含 descendants，System Tag 仅查询。Custom Tag 编辑事务只修改标签及关联，不触碰文件或事件。
+- 理由与影响：后台扫描和标签修改可能使 live cursor 失效，明确 stale_cursor 优于静默漏项；前端每页 100 项、虚拟行/lazy thumbnails、有界批量请求及 200 项选择，避免加载全库原图。搜索为 SQLite 文件名字面 substring，排序提供最近导入、文件名、Like Count。
+- 资源边界：Tauri protocol-asset 仅授权应用 cache/thumbnails/*.jpg；新增锁定依赖 http-range 0.1.6，由 Cargo 实际解析下载，其他依赖版本保留。无原件资源 scope、System Tag mutation、Like Event 或播放器 command。
+- 验证纪律：mock API 的 DOM 回归与真实 SQLite/Tauri IPC 分别记录。沿用 Phase 1 独立 identifier/appDirectoriesOverride；测试结束关闭应用并确认 1420 释放。UI 夹具等待真实 DOM 更新，不能以内存数据更新代替界面已渲染。详情和结果见 Phase 5 验证记录。
+
 ## 后续事项
 
 版本/驱动选型在 Phase 1 锁定；平台播放 profile/许可、页面、标签展示、Quick Browse UX 及规模实测留待后续单独授权。未来 manual relink、原文件编辑/删除或内容聚合必须另立决策和迁移，不是当前功能。当前无待冻结的身份或 Like/View/Play 核心业务语义。
