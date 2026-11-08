@@ -1,6 +1,8 @@
 //! Typed storage access only. No SQL connection is exposed over IPC.
 mod events;
 mod library;
+mod playback;
+pub use playback::PlaybackRepository;
 mod media;
 pub use library::LibraryRepository;
 mod sessions;
@@ -21,6 +23,11 @@ pub struct Repositories<'a> {
 }
 
 impl Repositories<'_> {
+    pub fn playback(&mut self) -> PlaybackRepository<'_> {
+        PlaybackRepository {
+            connection: self.connection,
+        }
+    }
     pub fn library(&mut self) -> LibraryRepository<'_> {
         LibraryRepository {
             connection: self.connection,

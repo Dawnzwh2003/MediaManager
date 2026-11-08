@@ -84,7 +84,7 @@ if (new URLSearchParams(location.search).has("run")) {
       const scroll = document.querySelector<HTMLDivElement>(".grid-scroll")!; scroll.scrollTop = 3000; scroll.dispatchEvent(new Event("scroll", { bubbles: true })); await new Promise(r => setTimeout(r, 100));
       assert(document.querySelectorAll(".media-card").length < 100, "Virtualization remains bounded after scrolling");
       scroll.scrollTop = 0; scroll.dispatchEvent(new Event("scroll", { bubbles: true })); await new Promise(r => setTimeout(r, 100));
-      document.querySelector<HTMLButtonElement>(".preview-button")!.click(); await wait(() => !!document.querySelector(".detail-name"));
+      document.querySelector<HTMLButtonElement>(".file-name")!.click(); await wait(() => !!document.querySelector(".detail-name"));
       assert(document.querySelector(".file-path")!.textContent!.startsWith("/synthetic/"), "Details show metadata without loading the original");
       document.querySelector<HTMLButtonElement>('[aria-label="管理 Custom Tags"]')!.click(); await wait(() => !!document.querySelector('[aria-label="新标签名称"]'));
       input(document.querySelector('[aria-label="新标签名称"]')!, "UI regression tag"); await new Promise(r => setTimeout(r, 50)); clickText("创建"); await wait(() => [...document.querySelectorAll(".tag-modal .tag-option")].some(row => row.textContent!.includes("UI regression tag")));

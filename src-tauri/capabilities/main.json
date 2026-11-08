@@ -4,5 +4,5 @@
   "description": "Local media library queries and Custom Tag edits; no raw filesystem, event or player commands.",
   "local": true,
   "windows": ["main"],
-  "permissions": ["allow-get-app-status","allow-query-library","allow-get-media-details","allow-list-library-tags","allow-mutate-custom-tag","allow-get-thumbnails"]
+  "permissions": ["allow-get-app-status","allow-query-library","allow-get-media-details","allow-list-library-tags","allow-mutate-custom-tag","allow-get-thumbnails","allow-open-viewer","allow-close-viewer","allow-save-playback-state","allow-prepare-playback","allow-viewer-navigation","allow-get-playback-state","core:event:allow-listen","core:event:allow-unlisten","core:window:allow-destroy"]
 }

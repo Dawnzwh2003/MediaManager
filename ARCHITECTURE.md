@@ -366,6 +366,17 @@ DTO 版本化，TypeScript strict，Rust 最终校验。ID/计数/sequence 用�
 - asset protocol 仅开放 $APPLOCALDATA/cache/thumbnails/*.jpg，CSP 仅增加 asset:/http://asset.localhost 图片来源，不给原媒体目录资源权限。Tauri protocol-asset feature 引入真实锁定 http-range 0.1.6，不变更既有版本或伪造锁文件。
 - 测试入口 tests/ui/library.html 使用合成、按需生成数据和测试用 API adapter，仅供开发验证，不被产品入口或 production build 导入，也不修改原生 Tauri internals。真实桌面验收使用独立 identifier 与 appDirectoriesOverride，沿用 Phase 1 隔离方式；不能把 mock UI 通过等同真实 IPC 通过。
 
+## Phase 6 已实施的查看器与恢复状态
+
+- v6 migration 只新增 playback_owners(media_id,content_version_id,owner_id,last_sequence,last_position,last_duration)，复用既有 playback_states 和 media.playback_position trigger。owner 接管、CAS 和严格递增 sequence 拒绝迟到写；同序号同事实重试幂等。completed 字段保持既有值，本阶段不实现资格或事件。
+- open_viewer 只为当前活动媒体打开后端只读 File，校验源文件证据，发放 128-bit 随机 token；最多 8 个短期会话。media URI 只接受 token/direct|remux|proxy，不能以 path 读任意文件；原媒体不进入 asset scope。关闭/退出撤销资源，逐请求校验内容版本与文件句柄证据。
+- 异步协议只在 main WebView 响应，I/O 用 blocking worker；单读槽位，视频每个 Range 最多 4 MiB，单图片最多 64 MiB，HEAD/206/416 正确返回。响应 no-store/nosniff，未知/过期 token 拒绝。移动后的相同只读句柄可继续读取；替换或版本改变不能冒充旧资源。
+- VideoPlayer 在原生加载失败或 metadata 显示无可解码视频画面时依序 Remux（stream copy）与 Proxy（libx264/AAC、yuv420p、最长边 1280×720 内、偶数尺寸），不把仅音频播放视为视频成功，不改变媒体/恢复 owner。FFmpeg 与 thumbnail 共享全局一个进程槽位，播放生成另有一个槽位；默认 600 秒超时、取消 kill/wait。输出最多 512 MiB，cache/playback 容量 2 GiB，回收只处理受管理哈希名且未 pin 的文件，每批最多 64，临时输出也计入预算。
+- 缓存键含媒体 ID/version/fingerprint/size/mtime/mode/profile，先写 .part.mp4，ffprobe 验证尺寸、时长（已知源时长偏差 <=max(1 秒,1%)），再原子 rename。原件不作为输出，转换失败/源变动/取消不会发布未完成资源；失败可以重试。当前使用软件编码，发布包 FFmpeg 许可仍须后续单独验收。
+- ImageViewer 只加载当前原图，支持 fit/100%/锚点缩放/受限平移及全屏；VideoPlayer 用受限资源 URL，提供自定义播放/暂停/seek/音量/静音/速率/全屏。前后项在 SQLite 按原筛选/排序 keyset 查邻居，后台改变时 stale_cursor 明确拒绝，用户主动标签修改后刷新导航，不偷偷重排 Quick Browse（本轮不实现该会话）。
+- ProgressSaver 以单 in-flight + 一个最新快照合并串行写；失败先重试相同 sequence/expected_version/事实，再保存最新位置。5 秒 checkpoint、pause、ended、切换、关闭、pagehide/visibility 都可刷新；原生 CloseRequested 阻止立即退出，最多等 3 秒尽力 flush，再 destroy 窗口。强制终止/断电可能损失最后一个 checkpoint 间隔，不能因此虚构 Play。
+- 图片/视频 Details 与 Custom Tag 使用既有 Library 接口；本阶段没有 Like/View/Play 写入口，也不从真实播放或位置持久化增加 play_count。
+
 ## 技术依据
 
 - [Tauri Capabilities](https://tauri.app/security/capabilities/) 与 [Command Scopes](https://tauri.app/security/scope/)：权限配置及命令内部校验。

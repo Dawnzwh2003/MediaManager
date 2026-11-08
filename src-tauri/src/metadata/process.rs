@@ -13,7 +13,7 @@ use std::{
 static PROCESS_GATE: Mutex<()> = Mutex::new(());
 pub(crate) const MAX_OUTPUT: usize = 1_048_576;
 
-pub(super) fn run(
+pub(crate) fn run(
     mut command: Command,
     timeout: Duration,
     cancel: &AtomicBool,

@@ -37,6 +37,15 @@ impl LibraryRepository<'_> {
         cursor: Option<&LibraryCursor>,
         limit: u32,
     ) -> AppResult<LibraryPage> {
+        self.query_direction(filter, cursor, limit, false)
+    }
+    fn query_direction(
+        &mut self,
+        filter: &LibraryFilter,
+        cursor: Option<&LibraryCursor>,
+        limit: u32,
+        reverse: bool,
+    ) -> AppResult<LibraryPage> {
         let limit = super::page_size(limit)?;
         if filter.search.chars().count() > 200
             || filter
@@ -79,9 +88,27 @@ impl LibraryRepository<'_> {
             ),
         };
         let seek = if cursor.is_some() {
+            let op = if reverse {
+                if op == "<" {
+                    ">"
+                } else {
+                    "<"
+                }
+            } else {
+                op
+            };
             format!("AND (m.{column},m.id){op}(?5,?6)")
         } else {
             String::new()
+        };
+        let direction = if reverse {
+            if direction == "ASC" {
+                "DESC"
+            } else {
+                "ASC"
+            }
+        } else {
+            direction
         };
         let sql=format!("WITH RECURSIVE subtree(id) AS (SELECT id FROM system_tags WHERE id=?3 UNION SELECT t.id FROM system_tags t JOIN subtree s ON t.parent_id=s.id)
             SELECT {FIELDS} FROM media m INDEXED BY {index} WHERE m.state='active'
@@ -139,6 +166,45 @@ impl LibraryRepository<'_> {
         let details=tx.query_row("SELECT file_path,file_size,video_codec,audio_codec,container,frame_rate FROM media WHERE id=?1",[id],|r|Ok(LibraryDetails {media:item.clone(),file_path:r.get(0)?,file_size:r.get(1)?,video_codec:r.get(2)?,audio_codec:r.get(3)?,container:r.get(4)?,frame_rate:r.get(5)?}))?;
         tx.commit()?;
         Ok(details)
+    }
+    pub fn navigation(
+        &mut self,
+        filter: &LibraryFilter,
+        id: &str,
+        generation: Option<i64>,
+    ) -> AppResult<crate::domain::viewer::ViewerNavigation> {
+        let m = self.details(id)?.media;
+        let current: i64 = self.connection.query_row(
+            "SELECT value FROM library_generation WHERE id=1",
+            [],
+            |r| r.get(0),
+        )?;
+        if generation.is_some_and(|g| g != current) {
+            return Err(AppError::StaleCursor);
+        }
+        let cursor = LibraryCursor {
+            generation: current,
+            signature: format!("{:x}", Sha256::digest(serde_json::to_vec(filter)?)),
+            id: m.id,
+            imported_at: m.imported_at,
+            file_name: m.file_name,
+            like_count: m.like_count,
+        };
+        let previous = self
+            .query_direction(filter, Some(&cursor), 1, true)?
+            .items
+            .first()
+            .map(|m| m.id.clone());
+        let next = self
+            .query_direction(filter, Some(&cursor), 1, false)?
+            .items
+            .first()
+            .map(|m| m.id.clone());
+        Ok(crate::domain::viewer::ViewerNavigation {
+            previous_id: previous,
+            next_id: next,
+            generation: current,
+        })
     }
     pub fn tags(&self, q: &TagQuery) -> AppResult<TagPage> {
         let limit = super::page_size(q.limit)?;

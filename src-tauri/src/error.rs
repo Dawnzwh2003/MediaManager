@@ -15,6 +15,10 @@ pub enum AppError {
     NotFound,
     #[error("library cursor is stale or belongs to another query")]
     StaleCursor,
+    #[error("playback state owner, sequence or version is stale")]
+    StaleState,
+    #[error("media resource is unavailable: {0}")]
+    MediaUnavailable(String),
     #[error("invalid persisted JSON: {0}")]
     Json(#[from] serde_json::Error),
     #[error("migration validation failed: {0}")]
@@ -40,6 +44,16 @@ impl AppError {
             Self::Validation(_) => ("invalid_input", "输入的数据不符合约束。", false),
             Self::NotFound => ("not_found", "记录不存在。", false),
             Self::StaleCursor => ("stale_cursor", "媒体库已更新，请刷新当前列表。", true),
+            Self::StaleState => (
+                "stale_state",
+                "播放状态已由更新的会话接管，请重新打开媒体。",
+                false,
+            ),
+            Self::MediaUnavailable(_) => (
+                "media_unavailable",
+                "媒体资源无法读取或转换失败，请重试。",
+                true,
+            ),
             Self::Json(_) => ("invalid_data", "保存的数据格式不正确。", false),
             Self::Io(_) => ("storage_unavailable", "无法访问应用运行目录。", true),
             Self::Storage(_) => (

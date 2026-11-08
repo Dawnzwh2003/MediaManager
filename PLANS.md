@@ -1,8 +1,8 @@
 # 分阶段开发计划
 
-## 当前状态（Phase 5）
+## 当前状态（Phase 6）
 
-用户已授权的基础 Media Library 已完成，前后端测试及隔离桌面 UI/真实 IPC 验收通过。上轮 Vite/独立 Chrome 残留已清理，修复 UI 夹具的 DOM 等待竞态后复验；结束时测试窗口全部关闭，1420 无监听。本轮停止，不实施 Like Event、播放器或后续阶段。
+ImageViewer、VideoPlayer 和独立进度保存已完成验收。前端 42/42，两种 Rust 配置各 54/54（含真实 FFmpeg），构建、Clippy、格式检查、隔离桌面 15 项回归及全屏/平移/应用退出检查通过。本轮没有实施 Play Event 或增加 play_count；已关闭测试窗口和 1420 服务、重置截图会话，到此停止。详见 [Phase 6 验证记录](docs/validation/phase6-validation.md)。
 
 ## Phase 4 验收历史（2026-11-08）
 
@@ -186,7 +186,7 @@ Phase 0 已将用户批准规则写入设计并通过 15 项 architecture review
 - 相同 seed/成员/算法可复现；ready 会话分页/扫描/点赞/改标签/重渲染不重排，新增不插入、缺失项不压缩；building 不可见；有界 spool/会话配额与可取消构建成立。
 - 冻结页面/MVP、搜索字段、标签重名/祖先 UX、会话保留和恢复交互；追加约束走 migration，不反改已批准业务语义。
 
-## Phase 5 — 基础 Media Library（当前授权）
+## Phase 5 — 基础 Media Library（已完成）
 
 - **状态：实现与本轮 Windows 验收完成，停止。** 六个组件、只读树形 System Tags/递归父目录筛选、平级 Custom Tag CRUD/单项与批量关联、类型化查询 API 已实施。
 - 每页 100 条 keyset，SQLite 筛选/排序，陈旧游标明确拒绝；前端仅保存当前页及有界游标历史，可见行虚拟化，lazy thumbnail 批量请求，不读取原始高清图。Like Count 只读，无 Event 或播放器实现。
@@ -204,7 +204,15 @@ Phase 0 已将用户批准规则写入设计并通过 15 项 architecture review
 - PlaybackState 独立保存，无事件也可恢复；CAS/owner/旧版本拒绝陈旧覆盖；completed 覆盖 95% OR remaining<=min(10s,5% duration)，短片 seek 到近尾不能替代真实 Play 资格。
 - 统计：注入 INSERT、计数更新、重建 delta、COMMIT 失败均整体 rollback。rebuild_like_count、rebuild_all_like_counts 与统一 rebuild 正确含零项；高水位/base/delta/checkpoint 在并发事件、取消、崩溃续跑下不漏计双计，发布每媒体原子、全库分批，UI 保持可用。
 
-## Phase 6 — 恢复、规模与发布验收
+## Phase 6 — ImageViewer、VideoPlayer 与进度（当前授权）
+
+- **状态：已验收（Windows，2026-11-08）。** 图片 previous/next/zoom/pan/fit/100%/fullscreen，视频 play/pause/timeline/volume/mute/speed/fullscreen/previous/next，二者有 Details/Custom Tag。
+- 受限 media URI 只接受打开后的短期 token/mode，不接收原始路径；后端只读句柄和 bounded Range 请求，关闭即撤销。原媒体目录不加入 asset scope。
+- Direct → Remux → H.264/AAC Proxy，后台/可取消/超时，复用全局 FFmpeg gate；缓存按 ID/version/fingerprint/stat/profile 隔离，验证后原子发布，有界容量与活动句柄 pin。
+- v6 migration 仅加入 playback_owners。PlaybackState 按稳定 ID/版本独立保存，owner + state_version + sequence 防止迟到写；前端串行合并 checkpoint，失败先按同一请求重试。保存点包含 5 秒周期、pause/ended、切换、关闭、pagehide/visibility，以及原生关闭前最多 3 秒尽力 flush。
+- 前端 Node 42/42、两种 Rust feature 配置各 54/54（含真实 FFmpeg）、开发监听 1/1、build/Clippy/fmt 已通过。真实 Tauri 回归 15 项通过，并验证图片拖动、图片/视频全屏和退出保存 24.5 秒；事件/播放计数为零、5 个合成原件指纹不变。修复仅音频可解码时的黑屏回退与重载会话回收，见 [验证与截图](docs/validation/phase6-validation.md)。没有新增 Play/View/Like Event 或 completed 资格判断；不推进下一 Phase。
+
+## 后续路线 — 恢复、规模与发布验收（未授权）
 
 - **状态：未开始**；依赖：Phase 1–5。
 - 目标：目标平台兼容、故障注入、备份恢复、长期运行、性能及打包分发。
@@ -216,4 +224,4 @@ Phase 0 已将用户批准规则写入设计并通过 15 项 architecture review
 
 主路径 0→1→2→3→4→5→6；数据层接口可在依赖已满足时细化，不能因阶段重排绕过事务和模块边界。每次推进记录完成范围、实际验证命令/结果和剩余风险。
 
-当前授权以 Phase 5 基础 Media Library 指令为准；完成前后端测试及本次重试后停止。Phase 1 浏览器通道的未验收记录继续保留，不能自动推进 Event Service 或播放器。阶段授权与阶段验收分别记录。
+当前授权以 Phase 6 viewer/player/progress 指令为准；完整测试后停止。Play Event 在下一 Phase 另行实现，不能从打开/播放或位置保存推导播放计数。阶段授权与阶段验收分别记录。

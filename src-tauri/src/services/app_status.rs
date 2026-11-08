@@ -14,6 +14,8 @@ struct Runtime {
 }
 
 pub struct AppState {
+    #[cfg(feature = "desktop")]
+    pub(crate) viewers: crate::viewer::ViewerService,
     root: PathBuf,
     runtime: Mutex<Option<Runtime>>,
 }
@@ -30,6 +32,8 @@ impl AppState {
     }
     pub fn new(root: PathBuf) -> Self {
         Self {
+            #[cfg(feature = "desktop")]
+            viewers: crate::viewer::ViewerService::default(),
             root,
             runtime: Mutex::new(None),
         }

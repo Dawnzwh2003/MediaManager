@@ -2,7 +2,7 @@
 
 ## 状态与文档范围
 
-当前用户已授权 Phase 5 基础 Media Library：Sidebar、FilterBar、MediaGrid、MediaCard、DetailsPanel、TagSelector，必要查询 API 和 Custom Tag CRUD/单项及批量关联。完成前后端测试后停止；不实现 Like Event 或播放器。本文件记录截至本轮收到的全部需求，批准语义不再标为待审核。
+当前用户已授权 Phase 6 ImageViewer、VideoPlayer 和独立 playback_position 保存；完整测试后停止。打开、播放、暂停、seek 或进度写入均不在本阶段生成 Play Event 或增加 play_count；Play Event 留给下一 Phase。本文件记录截至本轮收到的全部需求，批准语义不再标为待审核。
 
 固定技术栈：Tauri、React、TypeScript、Rust、SQLite、FFmpeg。具体依赖版本在工程初始化时锁定。
 
@@ -32,13 +32,21 @@ Phase 1 只建立基础设施，原生验证仍受环境限制。用户本轮已
 - 后台生成，损坏图片/视频、unsupported codec、FFmpeg missing/failure、thumbnail generation failure 均逐文件隔离，不能使 scan 或 UI 崩溃。失败可显式重试，中断可恢复。
 - 本轮完成全部测试、更新 PLANS.md 后停止。旧路线中的页面/播放事项仍是后续范围，不因阶段编号重用自动获得授权。
 
-### 当前 Phase 5 范围（用户指定）
+### Phase 5 范围（已完成）
 
 - Sidebar 提供 All Media、只读树形 System Tags、平级 Custom Tags；点击父 System Tag 默认递归包含全部 descendants，返回媒体不可重复。
 - MediaGrid 只加载 thumbnail，禁止一次读取全库原始高清图；SQLite keyset 增量查询、可见行 virtualization、lazy thumbnail loading，查询/DOM/选择集合与资源请求均有上限。
 - Card 至少显示 thumbnail、file name、media type、Like Count、Custom Tags。DetailsPanel 显示 metadata 和只读文件位置；当前不打开原始媒体或播放器。
 - Custom Tag 支持 create/rename/delete/add/remove/batch add/batch remove；只改数据库多对多关联，不改物理目录。System Tag 不提供手工更改目录关系的 command 或 UI。
 - 必要类型化 Tauri 查询/编辑接口、失败与空状态、标签更新后的刷新、陈旧游标明确拒绝。运行 frontend/backend tests 后停止；Like Count 仅展示，不新增 Like/View/Play Event。
+
+### 当前 Phase 6 范围（用户指定）
+
+- ImageViewer：previous/next、zoom/pan、fit/100%、fullscreen、Details、Custom Tag。
+- VideoPlayer：play/pause、timeline、volume/mute、playback speed、fullscreen、previous/next、Custom Tag、Details。
+- 独立保存 playback_position：至少周期 checkpoint、pause、media switch、viewer close，以及 application shutdown when possible。状态关联 media ID + content version；旧 owner/旧序号/旧版本不得覆盖新进度，保存失败可重试。
+- 播放器按既定 Direct → Remux → Proxy 回退，只读原件，派生资源放应用缓存；后台转换可取消，单文件失败不使 UI 崩溃。
+- 不实现 Play Event/资格/completed 新业务，不增加 play_count；保存位置不属于 Play 生命周期。完整测试后停止，下一 Phase 才实现 Play Event。
 
 ## 长期核心原则（已批准）
 

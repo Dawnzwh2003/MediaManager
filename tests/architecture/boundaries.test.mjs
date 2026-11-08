@@ -32,7 +32,7 @@ test("only the local main window can invoke library queries and custom tag edits
   const capability = JSON.parse(await readFile(path.join(root, "src-tauri/capabilities/main.json"), "utf8"));
   assert.equal(capability.local, true);
   assert.deepEqual(capability.windows, ["main"]);
-  assert.deepEqual(capability.permissions, ["allow-get-app-status", "allow-query-library", "allow-get-media-details", "allow-list-library-tags", "allow-mutate-custom-tag", "allow-get-thumbnails"]);
+  assert.deepEqual(capability.permissions, ["allow-get-app-status", "allow-query-library", "allow-get-media-details", "allow-list-library-tags", "allow-mutate-custom-tag", "allow-get-thumbnails", "allow-open-viewer", "allow-close-viewer", "allow-save-playback-state", "allow-prepare-playback", "allow-viewer-navigation", "allow-get-playback-state", "core:event:allow-listen", "core:event:allow-unlisten", "core:window:allow-destroy"]);
   assert.equal(capability.remote, undefined);
 });
 

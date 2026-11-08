@@ -1,5 +1,6 @@
 //! Bounded local ffprobe/FFmpeg operations. No database access and no shell.
 mod process;
+pub(crate) use process::run as run_process;
 use serde_json::Value;
 use std::{
     path::{Path, PathBuf},

@@ -42,12 +42,15 @@ impl Evidence {
             return Err(io::Error::other("not a regular unlinked file"));
         }
         let file = File::open(path)?;
+        Self::from_file(&file)
+    }
+    pub(crate) fn from_file(file: &File) -> io::Result<Self> {
         let meta = file.metadata()?;
         let created = timestamp(meta.created());
         let modified =
             timestamp(meta.modified()).ok_or_else(|| io::Error::other("mtime unavailable"))?;
         let size = i64::try_from(meta.len()).map_err(io::Error::other)?;
-        let key = file_key(&file, &meta)?;
+        let key = file_key(file, &meta)?;
         Ok(Self {
             stat: format!("{size}:{modified}:{created:?}:{key:?}"),
             key,

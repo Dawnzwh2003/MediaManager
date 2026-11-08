@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-prepare-playback"
+description = "Enables the prepare_playback command without any pre-configured scope."
+commands.allow = ["prepare_playback"]
+
+[[permission]]
+identifier = "deny-prepare-playback"
+description = "Denies the prepare_playback command without any pre-configured scope."
+commands.deny = ["prepare_playback"]

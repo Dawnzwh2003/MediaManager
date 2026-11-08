@@ -8,6 +8,12 @@ fn main() {
             "list_library_tags",
             "mutate_custom_tag",
             "get_thumbnails",
+            "open_viewer",
+            "close_viewer",
+            "save_playback_state",
+            "prepare_playback",
+            "viewer_navigation",
+            "get_playback_state",
         ]),
     ))
     .expect("failed to build the Tauri application manifest");

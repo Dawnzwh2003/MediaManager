@@ -1,6 +1,6 @@
 # Media Manager
 
-Tauri + React + TypeScript + Rust + SQLite 项目。当前有 scanner、metadata/thumbnail cache，以及 Phase 5 基础 Media Library：递归目录筛选、虚拟网格、metadata 详情和平级 Custom Tag CRUD/批量关联。Like Count 仅展示；没有 Like Event 写入、播放器或 Quick Browse 业务。
+Tauri + React + TypeScript + Rust + SQLite 项目。当前有 scanner、metadata/thumbnail cache、基础 Media Library，以及 Phase 6 ImageViewer/VideoPlayer：点击缩略图打开，支持前后切换、图片缩放平移、视频播放控制、全屏、Details 和 Custom Tag。视频进度按媒体 ID/内容版本保存并恢复，兼容性回退使用缓存中的 Remux/Proxy。Like Count 仅展示；本阶段不写 Play Event，也不增加 play_count。验收与截图见 [Phase 6 记录](docs/validation/phase6-validation.md)。
 
 ## 环境与安装
 

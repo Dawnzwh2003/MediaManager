@@ -215,6 +215,14 @@
 - 资源边界：Tauri protocol-asset 仅授权应用 cache/thumbnails/*.jpg；新增锁定依赖 http-range 0.1.6，由 Cargo 实际解析下载，其他依赖版本保留。无原件资源 scope、System Tag mutation、Like Event 或播放器 command。
 - 验证纪律：mock API 的 DOM 回归与真实 SQLite/Tauri IPC 分别记录。沿用 Phase 1 独立 identifier/appDirectoriesOverride；测试结束关闭应用并确认 1420 释放。UI 夹具等待真实 DOM 更新，不能以内存数据更新代替界面已渲染。详情和结果见 Phase 5 验证记录。
 
+## D028 — Phase 6 只读 Viewer 与独立进度
+
+- 状态：用户明确授权。ImageViewer/VideoPlayer 和 playback_position 本阶段实施，Play Event 明确留到下一 Phase。
+- 原因与迁移：既有 playback_states 可复用，但缺少防迟到 owner/sequence；追加 0006，不改旧 SQL/事件表，不迁移或继承替换媒体的状态。media.playback_position 继续只由既有状态 trigger 投影。
+- 决策：只读文件句柄 + 短期 opaque token 的异步 media 协议；不扩大原件目录 asset scope。Direct/Remux/Proxy 同一逻辑媒体/owner，缓存版本隔离、后台有界生成与容量回收，活动句柄 pin，原件永不覆盖。
+- 保存：5 秒 checkpoint、pause、切换、viewer close、原生关闭前最多 3 秒等待及 pagehide/visibility 尽力写。串行/合并快照，owner+CAS+sequence 防旧会话覆盖，错误可重试。打开/暂停/seek/保存不写事件；completed 资格和计数留给下一阶段。
+- 验证：合成媒体与临时数据库、真实 FFmpeg、隔离 Tauri 解码/交互及退出后只读查库；结束关闭窗口/端口并重置截图会话。结果见 PLANS.md 和本阶段验证记录，不把命令行通过冒充 UI 播放通过。
+
 ## 后续事项
 
 版本/驱动选型在 Phase 1 锁定；平台播放 profile/许可、页面、标签展示、Quick Browse UX 及规模实测留待后续单独授权。未来 manual relink、原文件编辑/删除或内容聚合必须另立决策和迁移，不是当前功能。当前无待冻结的身份或 Like/View/Play 核心业务语义。
