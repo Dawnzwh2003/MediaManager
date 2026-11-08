@@ -25,6 +25,19 @@ pub struct Database {
 }
 
 impl Database {
+    /// Blocking worker entry point; use scanner::spawn from asynchronous callers.
+    pub fn scan(
+        &mut self,
+        root: &std::path::Path,
+        cancel: &std::sync::atomic::AtomicBool,
+    ) -> AppResult<crate::scanner::ScanReport> {
+        crate::scanner::run(
+            &mut repositories::scanning::ScanStore(&mut self.connection),
+            root,
+            cancel,
+        )
+    }
+
     pub fn repositories(&mut self) -> repositories::Repositories<'_> {
         repositories::Repositories {
             connection: &mut self.connection,

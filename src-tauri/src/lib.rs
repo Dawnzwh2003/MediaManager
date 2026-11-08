@@ -1,7 +1,9 @@
 pub mod db;
 pub mod domain;
 pub mod error;
+pub mod identity;
 pub mod platform;
+pub mod scanner;
 pub mod services;
 
 #[cfg(feature = "desktop")]
