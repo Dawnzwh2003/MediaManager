@@ -4,6 +4,7 @@ pub mod repositories;
 use std::{
     fs::{File, OpenOptions},
     io,
+    sync::Arc,
     time::Duration,
 };
 
@@ -21,10 +22,30 @@ pub const BUSY_TIMEOUT_MS: u32 = 2_000;
 pub struct Database {
     connection: Connection,
     // Held for the entire connection lifetime; a second app cannot migrate/write.
-    _instance_lock: File,
+    _instance_lock: Arc<File>,
+    pub(crate) paths: AppPaths,
+    pub(crate) thumbnail_worker_running: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Database {
+    pub(crate) fn derivative_store(&mut self) -> repositories::derivatives::DerivativeStore<'_> {
+        repositories::derivatives::DerivativeStore(&mut self.connection)
+    }
+
+    // Internal background connection shares the lifetime lock; never acquires a second writer instance.
+    pub(crate) fn background_connection(&self) -> AppResult<Self> {
+        validate_managed_file(&self.paths.database)?;
+        let connection = Connection::open(&self.paths.database)?;
+        connection.busy_timeout(Duration::from_millis(u64::from(BUSY_TIMEOUT_MS)))?;
+        connection.pragma_update(None, "foreign_keys", true)?;
+        connection.pragma_update(None, "synchronous", "FULL")?;
+        Ok(Self {
+            connection,
+            _instance_lock: Arc::clone(&self._instance_lock),
+            paths: self.paths.clone(),
+            thumbnail_worker_running: Arc::clone(&self.thumbnail_worker_running),
+        })
+    }
     /// Blocking worker entry point; use scanner::spawn from asynchronous callers.
     pub fn scan(
         &mut self,
@@ -85,7 +106,9 @@ impl Database {
 
         Ok(Self {
             connection,
-            _instance_lock: lock,
+            _instance_lock: Arc::new(lock),
+            paths: paths.clone(),
+            thumbnail_worker_running: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         })
     }
 

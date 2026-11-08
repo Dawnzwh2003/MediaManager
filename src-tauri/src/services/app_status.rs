@@ -8,6 +8,7 @@ use crate::{
 };
 
 struct Runtime {
+    _thumbnails: crate::thumbnails::Worker,
     paths: AppPaths,
     database: Database,
 }
@@ -31,7 +32,13 @@ impl AppState {
         if slot.is_none() {
             let paths = AppPaths::prepare(&self.root)?;
             let database = Database::open(&paths)?;
-            *slot = Some(Runtime { paths, database });
+            let thumbnails =
+                database.start_thumbnail_worker(crate::metadata::Toolchain::default())?;
+            *slot = Some(Runtime {
+                _thumbnails: thumbnails,
+                paths,
+                database,
+            });
         }
         let runtime = slot.as_ref().ok_or(AppError::Internal)?;
         Ok(AppStatus {

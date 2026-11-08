@@ -2,9 +2,11 @@ pub mod db;
 pub mod domain;
 pub mod error;
 pub mod identity;
+pub mod metadata;
 pub mod platform;
 pub mod scanner;
 pub mod services;
+pub mod thumbnails;
 
 #[cfg(feature = "desktop")]
 mod commands;

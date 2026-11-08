@@ -75,4 +75,6 @@ fn changed(count: usize) -> AppResult<()> {
     }
 }
 
+pub(crate) mod derivatives;
 pub(crate) mod scanning;
+pub use derivatives::DerivativeStatus;

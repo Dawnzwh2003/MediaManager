@@ -10,7 +10,7 @@ pub struct MediaRepository<'a> {
     pub(crate) connection: &'a mut Connection,
 }
 
-const COLUMNS: &str = "id,fingerprint,file_path,file_name,media_type,file_size,created_time,modified_time,imported_at,last_seen_at,width,height,duration,thumbnail_path,like_count,view_count,play_count,last_viewed_at,last_played_at,playback_position,missing,state,current_content_version_id";
+const COLUMNS: &str = "id,fingerprint,file_path,file_name,media_type,file_size,created_time,modified_time,imported_at,last_seen_at,width,height,duration,thumbnail_path,like_count,view_count,play_count,last_viewed_at,last_played_at,playback_position,missing,state,current_content_version_id,video_codec,audio_codec,container,frame_rate";
 
 fn map_media(row: &Row<'_>) -> rusqlite::Result<Media> {
     let kind: String = row.get(4)?;
@@ -49,6 +49,10 @@ fn map_media(row: &Row<'_>) -> rusqlite::Result<Media> {
         missing: row.get(20)?,
         state: row.get(21)?,
         content_version_id: row.get(22)?,
+        video_codec: row.get(23)?,
+        audio_codec: row.get(24)?,
+        container: row.get(25)?,
+        frame_rate: row.get(26)?,
     })
 }
 

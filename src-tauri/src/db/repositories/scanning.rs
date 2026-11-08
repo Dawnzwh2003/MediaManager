@@ -18,6 +18,11 @@ pub(crate) struct Observation {
     pub kind: String,
 }
 pub(crate) struct ScanStore<'a>(pub &'a mut Connection);
+pub(crate) struct ScanRun<'a> {
+    pub root: &'a str,
+    pub generation: i64,
+    pub observed_at: i64,
+}
 impl ScanStore<'_> {
     pub fn roots(&self) -> AppResult<Vec<String>> {
         Ok(self
@@ -117,14 +122,17 @@ impl ScanStore<'_> {
     }
     pub fn persist(
         &mut self,
-        root: &str,
-        generation: i64,
+        run: &ScanRun<'_>,
         o: &Observation,
         id: Option<&str>,
         reason: &str,
-        now: i64,
         tags: &[String],
     ) -> AppResult<()> {
+        let ScanRun {
+            root,
+            generation,
+            observed_at: now,
+        } = *run;
         let tx = self.0.transaction()?;
         // Generation guard also rejects delayed workers from an interrupted scan.
         let valid:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM scan_roots WHERE path=?1 AND generation=?2 AND state='running')",params![root,generation],|r|r.get(0))?;

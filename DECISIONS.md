@@ -198,6 +198,15 @@
 - 2026-11-04 复验：工具链、依赖和 migration 均未变；上述命令行检查再次通过，并以独立测试目录通过真实桌面 IPC、刷新、重启、WebView 重载、第二实例 busy 与锁释放后重试恢复。仅浏览器预览的 URL/窗口读取再次被自动审批检查终止；Phase 2 当前数据层在 Windows 上验收，Phase 1 浏览器专项仍待补。证据见 [本次测试记录](docs/validation/phase12-2026-11-04.md)，不自动推进下一阶段。
 - 数据库影响：无 Schema/migration 或业务变更。继续停留 Phase 2 数据层，不实现 Event Service/scanner。
 
+## D026 — Phase 4 metadata 与可再生缩略图
+
+- 日期：2026-11-08；状态：**用户明确授权，已实施**。最新 Phase 4 定义为 metadata/thumbnail，旧浏览/播放路线不随编号获得实施授权。
+- 原因：现有 scanner 需要持久 metadata、内容关联的缓存与单文件故障隔离；原 Schema 只有尺寸/时长/path，缺少 codec、生成状态和恢复依据。
+- 决策：新增可追踪 0004 migration，保留原 width/height/duration/thumbnail_path；增加基础播放字段与独立可丢弃工作状态。图片和视频统一通过 ffprobe/FFmpeg，无新增 Rust/npm 依赖，Windows 图片强制单文件 demuxer。
+- 影响：工具来自 PATH 或 MEDIA_MANAGER_FFMPEG_DIR；missing/failure 是逐项错误，不是启动门槛。一个后台 worker、全局一个进程、短事务，默认 30 秒超时及输出/像素上限；未来播放必须复用共享预算。输出只在应用 cache/thumbnails/，key 包含身份、内容证据、variant 和生成器版本，路径迁移不改变 key。
+- 迁移：既有数据库升级前备份，新增列及队列表，为活动媒体排队，旧无版本 thumbnail_path 清空后再生；不改旧 migration、身份/事件/标签/播放进度。内容变化 trigger 失效，发布 CAS 防止迟到 worker 覆盖；文件 miss/中断可恢复，失败显式 retry。LRU、播放器和业务 UI 不属于本轮。
+- 验证：临时数据库/合成媒体，真实 FFmpeg/ffprobe 9.0.2；实际结果见 PLANS.md 和本次验证记录。测试工具只放忽略的 .tools，不修改系统 PATH，也不视为发布许可核查。
+
 ## 后续事项
 
-版本/驱动选型在 Phase 1 锁定；平台播放 profile/许可在 Phase 3 验证；页面、标签展示、Quick Browse 保留 UX 在 Phase 4 细化；性能预算和实测在相关 Phase/最终规模验收完成。未来 manual relink、原文件编辑/删除或内容聚合必须另立决策和迁移，不是当前功能。当前无待冻结的身份或 Like/View/Play 核心业务语义。
+版本/驱动选型在 Phase 1 锁定；平台播放 profile/许可、页面、标签展示、Quick Browse UX 及规模实测留待后续单独授权。未来 manual relink、原文件编辑/删除或内容聚合必须另立决策和迁移，不是当前功能。当前无待冻结的身份或 Like/View/Play 核心业务语义。

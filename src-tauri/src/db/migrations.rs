@@ -18,7 +18,7 @@ struct Migration {
     sql: &'static str,
 }
 
-pub const CURRENT_SCHEMA_VERSION: u32 = 3;
+pub const CURRENT_SCHEMA_VERSION: u32 = 4;
 
 const MIGRATIONS: &[Migration] = &[
     Migration {
@@ -35,6 +35,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 3,
         name: "scanning",
         sql: include_str!("../../migrations/0003_scanning.sql"),
+    },
+    Migration {
+        version: 4,
+        name: "media_derivatives",
+        sql: include_str!("../../migrations/0004_media_derivatives.sql"),
     },
 ];
 

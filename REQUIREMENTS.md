@@ -2,7 +2,7 @@
 
 ## 状态与文档范围
 
-当前用户已授权 Phase 2，且仅实现数据模型与数据库层；不实现 media scanner、Event Service 或 UI 业务。本文件记录截至本轮收到的全部需求，批准语义不再标为待审核。
+当前用户已授权 Phase 4：提取媒体 metadata、建立后台 thumbnail cache，完成全部测试并更新 PLANS.md 后停止。现有 scanner 作为输入；本轮不扩展播放器、Event Service 或浏览 UI。本文件记录截至本轮收到的全部需求，批准语义不再标为待审核。
 
 固定技术栈：Tauri、React、TypeScript、Rust、SQLite、FFmpeg。具体依赖版本在工程初始化时锁定。
 
@@ -14,7 +14,7 @@
 
 Phase 1 只建立基础设施，原生验证仍受环境限制。用户本轮已明确授权进入 Phase 2，不把此前未授权状态误当当前禁止指令；验证限制继续如实保留。
 
-### 当前 Phase 2 范围（用户指定）
+### 历史 Phase 2 范围（用户指定）
 
 - 建立 media、system_tags、custom_tags、media_system_tags、media_custom_tags、like_events、view_events、play_events、quick_browse_sessions、app_settings 与必要 migration metadata。
 - media 支持 id、fingerprint、file_path、file_name、media_type、file_size、created_time、modified_time、imported_at、last_seen_at、width、height、duration、thumbnail_path、like_count、view_count、play_count、last_viewed_at、last_played_at、playback_position、missing；未知媒体元数据可空，统计默认为零。
@@ -23,6 +23,14 @@ Phase 1 只建立基础设施，原生验证仍受环境限制。用户本轮已
 - 建立 Rust Repository；React 不接触 SQL，且不新增业务 Tauri command。事件仅实现表/约束和原子计数触发器，Repository 只读；不实现 Event Service。
 - 为多对多、System Tag hierarchy、唯一性、FK、cascade、migration 等写测试。删除标签只清理关联，事件历史不得级联删除；普通数据操作不修改物理文件。
 - 独立内容版本/位置历史/播放状态及快照成员表用于保留已批准架构边界；不因此实现播放器、随机排序或浏览业务。完成数据层与测试后停止，不自动推进 scanner 或其他 Phase。
+
+### 当前 Phase 4 范围（2026-11-08 用户指定）
+
+- 图片提取 width/height；视频以 ffprobe 提取 width/height/duration，架构允许时保存 codec 及必要基础播放信息。未知 duration 保持 NULL，不伪造时长。
+- 图片生成缩略图；视频优先取约 10% duration 的帧，无法取帧可回退首帧。缩略图放应用 cache/thumbnails/，SQLite 只存路径、状态和元数据，不存 binary。
+- 缓存关联稳定 media ID、内容版本和 fingerprint；内容证据变化失效，移动/重命名不因路径变化重建。重复打开 UI 复用 ready 缓存，文件丢失视为 miss。
+- 后台生成，损坏图片/视频、unsupported codec、FFmpeg missing/failure、thumbnail generation failure 均逐文件隔离，不能使 scan 或 UI 崩溃。失败可显式重试，中断可恢复。
+- 本轮完成全部测试、更新 PLANS.md 后停止。旧路线中的页面/播放事项仍是后续范围，不因阶段编号重用自动获得授权。
 
 ## 长期核心原则（已批准）
 

@@ -1,13 +1,13 @@
 # Media Manager
 
-Tauri + React + TypeScript + Rust + SQLite 项目。当前有 Phase 1 状态页与 Phase 2 数据模型/Repository；没有 scanner、Event Service、媒体查看/播放、标签 UI 或 Quick Browse 业务。React 仍只有 `get_app_status`。
+Tauri + React + TypeScript + Rust + SQLite 项目。当前有状态页、数据模型/Repository、scanner，以及 Phase 4 metadata 与后台 thumbnail cache；没有 Event Service、媒体查看/播放、标签 UI 或 Quick Browse 业务。React 仍只有 `get_app_status`。
 
 ## 环境与安装
 
 - Node.js >=22.18（当前环境为 24.22.2），npm。
 - Rust stable（`rust-toolchain.toml`；本轮实际为 1.99.1）及 rustfmt、Clippy。Cargo manifest 的 `rust-version=1.90` 是声明的最低版本，不固定实际编译器；最低版本尚未单独验证。
 - Windows：MSVC C++ Build Tools、Windows SDK、WebView2 Runtime。其他平台按 [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) 安装系统依赖；当前尚未验证跨平台构建。
-- 可访问 npm registry 和 crates.io/Rust 下载站。FFmpeg 不属于本阶段安装或执行范围。
+- 可访问 npm registry 和 crates.io/Rust 下载站。Phase 4 需要 ffmpeg 和 ffprobe：放入 PATH，或将 MEDIA_MANAGER_FFMPEG_DIR 设为二者所在 bin 目录。未安装时记录逐文件失败，状态页与扫描仍可用；图片处理也使用该工具链。
 
 首次安装：
 
@@ -89,7 +89,15 @@ React → `src/api/app-status.ts` → `get_app_status` → 阻塞 worker → Rus
 - `schema_migrations` 为 runner 自举表；每份编号 SQL 与对应记录同一事务。SQL 失败由事务回滚，下一次从最后已提交版本继续。
 - 既有库升级前通过 SQLite backup API 保存包含 WAL 数据的一致性备份，成功后才迁移。备份失败不继续升级，回退使用备份，不承诺自动降级。
 - 已应用 SQL 不修改。新增 migration 必须加入 runner 的静态清单；名称、SHA-256 与应用时间记录在库中。`.gitattributes` 固定 LF，避免换行改变校验和。
-- 当前 schema=2，v1 ledger/app_metadata 保留；新增 media、两类 tags 与关联、三个事件表、quick_browse_sessions、app_settings，以及版本/位置/播放状态/快照成员辅助表。源 SQL 为 `0002_library_model.sql`，没有修改 v1。
+- 当前 schema=4；v1/v2/v3 保留，0004 增加基础播放 metadata 与 media_derivatives 状态队列，旧无版本缩略图引用失效再生，不影响历史数据。
+
+## Phase 4 Metadata 与 Thumbnail
+
+应用初始化后后台 worker 自动消费扫描排队的任务；不在状态查询或扫描事务中解码。Rust `Database::request_thumbnail(id, retry)` 返回 pending/ready/failed 与独立 metadata 状态，ready 命中复用、缓存丢失重新排队，失败可显式 retry。当前为后端接口，尚未扩展业务 UI/IPC。
+
+缩略图是 cache/thumbnails/ 下最长边 320 的 JPEG，视频优先约 10% duration。SQLite 仅保存 metadata/path/status，缓存键关联 media ID、内容版本、fingerprint 和生成配置；原件只读。工具超时/损坏媒体/unsupported codec/写缓存失败均逐文件隔离。
+
+运行全部 Rust 测试（包括真实 FFmpeg 集成用例）时先配置上述工具路径，再执行 `cargo test --locked -- --include-ignored` 和 `cargo test --locked --no-default-features -- --include-ignored`。普通 cargo test 默认跳过 4 项标记为需要真实工具的测试；本次验收必须包含这些用例。工具分发/许可与 LRU 仍留待后续。
 
 ## Phase 2 数据层
 

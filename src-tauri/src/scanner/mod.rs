@@ -2,7 +2,7 @@
 pub mod fingerprint;
 use crate::{
     db::{
-        repositories::scanning::{Observation, ScanStore},
+        repositories::scanning::{Observation, ScanRun, ScanStore},
         Database,
     },
     error::{AppError, AppResult},
@@ -105,15 +105,14 @@ fn work(
             return Ok(report);
         }
         let path = Path::new(&directory);
-        let meta = match fs::symlink_metadata(path) {
-            Ok(m) if !is_link(&m) && m.is_dir() => m,
+        match fs::symlink_metadata(path) {
+            Ok(m) if !is_link(&m) && m.is_dir() => {}
             _ => {
                 report.failed += 1;
                 store.done(root_text, &directory)?;
                 continue;
             }
-        };
-        drop(meta);
+        }
         let parent = if path == root {
             None
         } else {
@@ -264,12 +263,14 @@ fn work(
             parent = path.parent();
         }
         store.persist(
-            root_text,
-            generation,
+            &ScanRun {
+                root: root_text,
+                generation,
+                observed_at: now,
+            },
             &o,
             matched.as_ref().map(|m| m.id.as_str()),
             reason,
-            now,
             &tags,
         )?;
     }

@@ -1,6 +1,10 @@
 # 分阶段开发计划
 
-## 当前状态与门槛
+## 当前状态（2026-11-08）
+
+用户本次授权的 **Phase 4 = metadata 与 thumbnail cache 已完成**，替代旧路线的同名编号范围。全套适用测试通过，结果见下方 Phase 4；本轮到此停止，不推进播放或浏览 UI。此前 Phase 1 浏览器专项的限制保留，不把历史记录视为本轮阻塞或实施范围。
+
+## 历史状态与门槛（Phase 1/2）
 
 Phase 0 已将用户批准规则写入设计并通过 15 项 architecture review：**Ready for Phase 1: YES**。用户现明确授权 Phase 2：仅数据模型与数据库层，不包含 scanner、Event Service 或 UI 业务。
 
@@ -138,7 +142,7 @@ Phase 0 已将用户批准规则写入设计并通过 15 项 architecture review
 - 验收：new/existing/moved/renamed/modified/missing/restored、跨根/覆盖/文件 ID 复用、false-negative 优先、无损历史、离线不误标与大视频 I/O 预算。
 - 当前只预留 Repository seam，禁止以数据库测试为由提前实现遍历/匹配。
 
-## Phase 3 — 元数据、Thumbnail 与三层播放缓存
+## 历史路线 — 三层播放缓存（仍待单独授权）
 
 - **状态：未开始**；依赖：Phase 2 数据层及后续授权的媒体输入/扫描基础。
 - 目标：Direct→Remux→Proxy、后台缩略图、受限 range 资源、FFmpeg 隔离与可再生缓存。
@@ -146,7 +150,31 @@ Phase 0 已将用户批准规则写入设计并通过 15 项 architecture review
 - 代理默认并发 1、可配置至 1–2，受全局 FFmpeg 预算约束；按键去重、可报进度；原件永不作为输出。完成验证后才发布 ready。
 - 版本变化失效、cache miss 重建、孤儿清理和有界 LRU/pin 均正确；代理时间线与原媒体一致。平台 profile/字幕音轨/HDR 能力及 FFmpeg 获取/许可方案在本阶段记录，发布前完成许可核查。
 
-## Phase 4 — 媒体浏览、标签与稳定会话
+## Phase 4 — Metadata 与 Thumbnail Cache（本次授权）
+
+- **状态：实现及本轮 Windows 验收完成（2026-11-08），停止。** 本阶段按用户最新指令执行；现有 v3 scanner 为输入，不实施播放、浏览 UI 或 Event Service。
+- 图片 width/height；视频 width/height/duration/video_codec，附 audio_codec/container/frame_rate；未知值 NULL。ffprobe/FFmpeg 均以参数数组调用，不经 shell。
+- v4 migration 新增必要媒体字段及 media_derivatives 持久队列；旧 migration 不改。升级前沿用一致性备份；仅旧的无版本 thumbnail_path 失效，事件、标签、播放状态和稳定身份保留。
+- 应用初始化后启动独立连接的后台 worker；每次一项、短事务、全局一个 ffprobe/FFmpeg 槽位。扫描仅由 trigger 排队，不等待解码。进程默认超时 30 秒，可取消并 kill/wait；stdout <=1 MiB、stderr <=64 KiB、单次分配限制 64 MiB、像素上限 100M。
+- 320 边界内等比 JPEG，视频优先约 10% duration，取帧失败可回退首帧，未知时长取首帧。cache/thumbnails/<sha256>.jpg，key 含 media ID、content version、fingerprint、size/mtime、variant、generator version；不以 path 作 identity，不共享独立文件的缓存键。
+- 同目录 .part 写入、sync、rename 后短事务标 ready；不写原件，不向 SQLite 存 binary。内容证据变化清 metadata/path 并重新排队；旧 worker 用版本/指纹/路径/CAS 拒绝迟到发布。移动/重命名复用；ready 文件丢失后 request_thumbnail 重新排队；失败显式 retry，running 在重启恢复。
+- 已覆盖正常/失败/恢复、损坏图片/视频、缺工具、未知 codec/时长、进程失败/超时/取消/输出上限、缓存写失败、文件丢失、重启、移动后标签/事件/进度保留、同路径替换隔离、版本切换与事务回滚。真实 FFmpeg 测试用颜色变化验证 10% 帧，并独立解码输出 JPEG。
+- 工具来自 PATH 或 MEDIA_MANAGER_FFMPEG_DIR；测试用便携 FFmpeg/ffprobe 9.0.2 位于忽略的 .tools/ffmpeg/，不修改系统 PATH，不纳入发布包。本轮不宣称发布许可、播放器能力、LRU 或 100,000 UI 规模验收。
+
+| 最终实际执行命令 | 结果 |
+| --- | --- |
+| cargo test --locked --offline -- --include-ignored | PASS，40/40；全部 4 项真实 FFmpeg 集成用例执行，无跳过项。 |
+| cargo test --locked --offline --no-default-features -- --include-ignored | PASS，40/40；同样包含全部真实工具用例。 |
+| cargo clippy --locked --offline --all-targets -- -D warnings | PASS。 |
+| cargo fmt --all -- --check | PASS。 |
+| npm.cmd test | PASS，30/30。 |
+| npm.cmd run test:dev | PASS，1/1。 |
+| npm.cmd run build | PASS，TypeScript 严格检查与 Vite production build。 |
+| git diff --check | PASS。 |
+
+测试环境及故障/恢复证据见 [Phase 4 验证记录](docs/validation/phase4-2026-11-08.md)。本轮 Clippy 另发现既有 scanner 参数过多及无效 drop；仅聚合 ScanRun 上下文、移除无效 drop，未改身份判定或扫描规则。没有新增依赖或改动锁文件，旧 migration 保持不变。Windows 结果不含 Unix 条件用例；本轮未重跑真实 UI smoke 或正式 release 打包。
+
+## 后续路线 — 媒体浏览、标签与稳定会话（未授权）
 
 - **状态：未开始**；依赖：Phase 2–3。
 - 目标：主媒体导航、虚拟 Grid、SQLite 过滤/排序/搜索、目录投影和 Custom Tag、稳定 Random/Quick Browse。
@@ -175,4 +203,4 @@ Phase 0 已将用户批准规则写入设计并通过 15 项 architecture review
 
 主路径 0→1→2→3→4→5→6；数据层接口可在依赖已满足时细化，不能因阶段重排绕过事务和模块边界。每次推进记录完成范围、实际验证命令/结果和剩余风险。
 
-当前只授权 Phase 2 数据模型与数据库层；本轮该范围已在 Windows 上验收，Phase 1 浏览器专项未完成如实保留，不能自动推进 scanner、Event Service 或下一阶段。阶段授权与阶段验收分别记录。
+当前授权以本次 Phase 4 metadata/thumbnail 指令为准；完成全套验证并更新本计划后停止。Phase 1 浏览器专项未完成如实保留，不能自动推进 Event Service、播放器或浏览 UI。阶段授权与阶段验收分别记录。

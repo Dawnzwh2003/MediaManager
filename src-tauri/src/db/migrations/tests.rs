@@ -1,7 +1,7 @@
 use super::*;
 
 const SECOND: Migration = Migration {
-    version: 4,
+    version: 5,
     name: "test_extension",
     sql: "CREATE TABLE test_extension (id INTEGER PRIMARY KEY, value TEXT NOT NULL) STRICT;",
 };
@@ -130,7 +130,12 @@ fn changed_checksum_or_history_gap_is_rejected_without_new_ddl() {
         .unwrap()
         .collect::<Result<_, _>>()
         .unwrap();
-    assert_eq!(versions, vec![1, 3]);
+    assert_eq!(
+        versions,
+        (1..=CURRENT_SCHEMA_VERSION)
+            .filter(|v| *v != 2)
+            .collect::<Vec<_>>()
+    );
     let schema_before: String = connection
         .query_row("SELECT group_concat(sql) FROM sqlite_schema", [], |row| {
             row.get(0)
@@ -226,6 +231,11 @@ fn newer_database_is_rejected_before_persistent_connection_changes() {
             version: 3,
             name: MIGRATIONS[2].name,
             sql: MIGRATIONS[2].sql,
+        },
+        Migration {
+            version: 4,
+            name: MIGRATIONS[3].name,
+            sql: MIGRATIONS[3].sql,
         },
         SECOND,
     ];

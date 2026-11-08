@@ -175,7 +175,7 @@ system_tags 本身就是原 directories 设计的物理目录投影，不再建�
 - like/view 禁止 UPDATE/DELETE；Play 身份/资格事实不可改，仅允许一次终结补全，之后冻结。Source of Truth 始终是三个事件表。
 - 每个事件 INSERT 的 AFTER trigger 在同一 SQLite statement/transaction 内更新对应 Counter Cache，view/play 同时更新 last_* 时间的 MAX；失败、溢出或外层回滚同时撤销事件与缓存。**未来 Event Service 不得再手工 +1，避免重复计数**。
 - 本轮 EventRepository 只读，未暴露事件写入、资格判断、重建或 Tauri 业务 API。未来 Event Service 负责 activation/player session 的资格和请求幂等，以及 D016 重建期间的 delta hook；应先追加正式 migration，再启用这些服务。
-- thumbnail_path 只是可丢弃缓存引用，不是原媒体路径；缓存生成/回收模块尚未实现。playback_position 不是 Play 事实，不能由保存进度创造事件。
+- thumbnail_path 只是可丢弃缓存引用，不是原媒体路径；Phase 4 已实现生成、内容失效和 miss 重建，配额/LRU 回收仍属后续范围。playback_position 不是 Play 事实，不能由保存进度创造事件。
 
 ### Repository 边界
 
@@ -337,6 +337,23 @@ DTO 版本化，TypeScript strict，Rust 最终校验。ID/计数/sequence 用�
 - 重建高水位、base/delta/checkpoint、并发事件与取消恢复需故障注入；scratch 磁盘占用和批次延迟需要规模测量，不回退长期全库写事务。
 - Quick Browse 构建会占 spool/WAL/磁盘，必须限额与清理；100,000+ 查询索引组合、内存、冷/热响应和代理吞吐在后续 Phase 验收。
 - migration、路径编码/大小写/链接越界、坏文件与缓存孤儿恢复必须测试。以上是工程风险，无当前 Phase 1 未解决的业务阻塞项。
+
+## Phase 4 已实施边界（2026-11-08）
+
+- schema v4 增加 media.video_codec/audio_codec/container/frame_rate，以及可丢弃的 media_derivatives 队列（pending/running/ready/failed、独立 metadata_status/error、thumbnail_error、cache_key、generator_version、attempts）。width/height/duration/thumbnail_path 继续使用原字段；没有 binary/BLOB。
+- metadata 模块只做本地 ffprobe/FFmpeg 调用与解析；thumbnails 服务编排观察、生成、发布；DerivativeStore 只执行参数化存储及事务。扫描 INSERT/内容证据更新由 trigger 排队/失效；不在扫描事务中解码。
+- 当前一个 thumbnail worker，独立 SQLite 连接共享同一 lifetime 实例锁；事务外运行子进程，前台状态连接不等待 I/O。全局进程槽位暂为 1（低于既定预算 2），未来播放须复用同一限流入口；不启动额外无界任务队列。
+- 缓存键为 SHA-256(JSON(media_id,content_version_id,fingerprint,size,mtime,variant,generator_version))；路径不参与键，独立同内容实例不共享键。mtime/size 补充 quick fingerprint 证据；源文件前后 stat 比较与 DB CAS 拒绝过期结果。数据库内容证据变化立即清空当前 metadata/path；同路径替换沿用 scanner 新 ID 规则。
+- 320×320 内等比 JPEG，视频优先 0.1×duration 秒，取帧失败回退首帧；未知 duration 取首帧。图片强制单文件 demuxer，兼容 Windows 扩展路径及含 % 的名字。允许单文件图片/视频 demuxer 和 file 协议，禁止网络/播放列表/序列输入。
+- 缩略图经受限 stdout 读取，检查 JPEG 标识、帧尺寸与扫描头，再写应用 thumbnails 目录的 .part、sync、同目录 rename，最后提交路径与 ready。只检查并操作生成的哈希路径，拒绝链接/reparse point；不会向原件写入或递归清理。文件/数据库之间无共同事务，迟到生成可留孤儿缓存，后续配额回收另行实施。
+- ready 路径请求检查命中，不重新生成；丢文件/错误键入队。failed 显式重试；启动恢复 running 及旧 generator；取消保留 pending。工具缺失不阻止应用/扫描，逐项记录稳定错误码，已有 metadata 可在 thumbnail 失败时保留。启动本轮不新增业务 IPC 或 UI。
+- 默认单进程超时 30 秒，取消/超时 kill + wait；stdout 1 MiB、stderr 64 KiB、单次分配 64 MiB、像素 100M。工具由 PATH 或 MEDIA_MANAGER_FFMPEG_DIR 提供，测试下载不代表发布包已分发或许可验收。
+
+以下是实现所依照的官方工具文档，缓存/队列方案为本项目设计：
+
+- [ffprobe JSON 与 show_entries](https://ffmpeg.org/ffprobe.html)。
+- [FFmpeg 输入 seek 与单帧输出](https://ffmpeg.org/ffmpeg.html)。
+- [FFmpeg protocol_whitelist](https://ffmpeg.org/ffmpeg-protocols.html)。
 
 ## 技术依据
 
