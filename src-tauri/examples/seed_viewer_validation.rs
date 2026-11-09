@@ -3,7 +3,12 @@ use media_manager::{db::Database, metadata::Toolchain, platform::paths::AppPaths
 use std::{fs, path::Path, sync::atomic::AtomicBool};
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-    let root = workspace.join(".tools/validation/phase6");
+    let phase = if std::env::args().nth(1).as_deref() == Some("--phase7") {
+        "phase7"
+    } else {
+        "phase6"
+    };
+    let root = workspace.join(".tools/validation").join(phase);
     let runtime = root.join("runtime");
     if runtime.join("data/library.sqlite3").exists() {
         return Err("Validation database exists; refusing to overwrite it".into());
@@ -81,7 +86,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err(format!("Unexpected metadata result {report:?}").into());
     }
     println!(
-        "Seeded 5 synthetic media for Phase 6: {}",
+        "Seeded 5 synthetic media for {phase}: {}",
         runtime.display()
     );
     Ok(())

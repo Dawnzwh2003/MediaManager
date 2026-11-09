@@ -2,7 +2,7 @@
 
 ## 状态与文档范围
 
-当前用户已授权 Phase 6 ImageViewer、VideoPlayer 和独立 playback_position 保存；完整测试后停止。打开、播放、暂停、seek 或进度写入均不在本阶段生成 Play Event 或增加 play_count；Play Event 留给下一 Phase。本文件记录截至本轮收到的全部需求，批准语义不再标为待审核。
+当前用户已授权 Phase 7 Event Log + Counter Cache：Like、Activation View、Qualified Play、分项/统一统计重建和 Like 按钮/L 快捷键；完整测试通过后停止。事件日志始终是事实来源，计数仅为可重建缓存。Phase 6 不写 Play 的限制是当时阶段边界，已由本次明确实施授权推进；批准的 Like/View/Play 定义保持不变。
 
 固定技术栈：Tauri、React、TypeScript、Rust、SQLite、FFmpeg。具体依赖版本在工程初始化时锁定。
 
@@ -47,6 +47,14 @@ Phase 1 只建立基础设施，原生验证仍受环境限制。用户本轮已
 - 独立保存 playback_position：至少周期 checkpoint、pause、media switch、viewer close，以及 application shutdown when possible。状态关联 media ID + content version；旧 owner/旧序号/旧版本不得覆盖新进度，保存失败可重试。
 - 播放器按既定 Direct → Remux → Proxy 回退，只读原件，派生资源放应用缓存；后台转换可取消，单文件失败不使 UI 崩溃。
 - 不实现 Play Event/资格/completed 新业务，不增加 play_count；保存位置不属于 Play 生命周期。完整测试后停止，下一 Phase 才实现 Play Event。
+
+## Phase 7 授权范围
+
+- 每次主动 Like 新建 request_id 和事件，同一动作重试沿用 request_id；按钮与 L 调同一后端 add_like 服务。支持单项及全部 Like/View/Play 计数重建。
+- View 仅在媒体成为查看器主媒体后记录，按 activation 去重，A→B→A 三次；hover/预取/重渲染不计。source 支持 grid、normal_viewer、quick_browser、search、history；本轮不新增 Quick Browser 或 History 页面。
+- Play 沿用下文已批准的五秒/短片真实 ended 定义，打开播放器不计数；资格时插入，关闭/切换时受限终结同一事件。播放进度独立保存，不用位置更新代替观看证据。
+- 事件插入、数据库触发器计数更新、活动重建增量及工作状态必须事务原子提交；失败回滚。rebuild_statistics 从日志修复三个计数及 last_viewed_at/last_played_at，后台分批执行、可恢复和取消。
+- 测试必须覆盖 100 rapid Likes、事务回滚、计数重建、View 去重/A→B→A、有效/无效短播放、completed 和统一统计；失败修复后重跑完整测试，到此停止。
 
 ## 长期核心原则（已批准）
 

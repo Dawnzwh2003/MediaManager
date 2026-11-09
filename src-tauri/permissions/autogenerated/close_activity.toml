@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-close-activity"
+description = "Enables the close_activity command without any pre-configured scope."
+commands.allow = ["close_activity"]
+
+[[permission]]
+identifier = "deny-close-activity"
+description = "Denies the close_activity command without any pre-configured scope."
+commands.deny = ["close_activity"]

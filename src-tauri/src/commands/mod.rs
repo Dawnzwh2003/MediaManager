@@ -1,4 +1,14 @@
 use crate::domain::library_query::*;
+#[tauri::command]
+pub async fn get_statistics(
+    state: tauri::State<'_, Arc<AppState>>,
+    media_id: String,
+) -> AppResult<ActivityResult> {
+    library_call(Arc::clone(state.inner()), move |db| {
+        db.repositories().events().cached_statistics(&media_id)
+    })
+    .await
+}
 use crate::domain::viewer::*;
 use std::sync::Arc;
 
@@ -150,6 +160,95 @@ pub async fn viewer_navigation(
         db.repositories()
             .library()
             .navigation(&filter, &id, generation)
+    })
+    .await
+}
+use crate::domain::activity::{
+    Activation, ActivityResult, PlayResult, PlaybackEvidence, StatisticsJob,
+};
+
+#[tauri::command]
+pub async fn add_like(
+    state: tauri::State<'_, Arc<AppState>>,
+    media_id: String,
+    request_id: String,
+) -> AppResult<ActivityResult> {
+    library_call(Arc::clone(state.inner()), move |db| {
+        crate::services::activity::add_like(db, &media_id, &request_id)
+    })
+    .await
+}
+#[tauri::command]
+pub async fn activate_media(
+    state: tauri::State<'_, Arc<AppState>>,
+    token: String,
+    activation: Activation,
+) -> AppResult<ActivityResult> {
+    viewer_call(Arc::clone(state.inner()), move |service, db| {
+        service.authorize_activity(db, &token, &activation)?;
+        crate::services::activity::record_view(db, &activation)
+    })
+    .await
+}
+#[tauri::command]
+pub async fn open_player_session(
+    state: tauri::State<'_, Arc<AppState>>,
+    activation_id: String,
+) -> AppResult<String> {
+    library_call(Arc::clone(state.inner()), move |db| {
+        crate::services::activity::open_player_session(db, &activation_id)
+    })
+    .await
+}
+#[tauri::command]
+pub async fn report_playback(
+    state: tauri::State<'_, Arc<AppState>>,
+    evidence: PlaybackEvidence,
+) -> AppResult<PlayResult> {
+    library_call(Arc::clone(state.inner()), move |db| {
+        crate::services::activity::record_play(db, &evidence)
+    })
+    .await
+}
+#[tauri::command]
+pub async fn close_activity(
+    state: tauri::State<'_, Arc<AppState>>,
+    activation_id: String,
+) -> AppResult<()> {
+    library_call(Arc::clone(state.inner()), move |db| {
+        crate::services::activity::finalize_play(db, &activation_id)
+    })
+    .await
+}
+#[tauri::command]
+pub async fn rebuild_statistics(
+    state: tauri::State<'_, Arc<AppState>>,
+    request_id: String,
+    kind: String,
+    media_id: Option<String>,
+) -> AppResult<StatisticsJob> {
+    library_call(Arc::clone(state.inner()), move |db| {
+        crate::services::statistics::rebuild_statistics(db, &request_id, &kind, media_id.as_deref())
+    })
+    .await
+}
+#[tauri::command]
+pub async fn statistics_job(
+    state: tauri::State<'_, Arc<AppState>>,
+    id: String,
+) -> AppResult<StatisticsJob> {
+    library_call(Arc::clone(state.inner()), move |db| {
+        crate::services::statistics::status(db, &id)
+    })
+    .await
+}
+#[tauri::command]
+pub async fn cancel_statistics_rebuild(
+    state: tauri::State<'_, Arc<AppState>>,
+    id: String,
+) -> AppResult<()> {
+    library_call(Arc::clone(state.inner()), move |db| {
+        crate::services::statistics::cancel(db, &id)
     })
     .await
 }

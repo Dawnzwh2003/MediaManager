@@ -118,6 +118,8 @@ pub struct LikeEvent {
 
 #[derive(Debug, Clone)]
 pub struct ViewEvent {
+    pub source: String,
+    pub viewed_at: i64,
     pub id: String,
     pub ingest_seq: i64,
     pub request_id: String,

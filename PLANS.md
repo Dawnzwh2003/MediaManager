@@ -1,8 +1,8 @@
 # 分阶段开发计划
 
-## 当前状态（Phase 6）
+## 当前状态（Phase 7）
 
-ImageViewer、VideoPlayer 和独立进度保存已完成验收。前端 42/42，两种 Rust 配置各 54/54（含真实 FFmpeg），构建、Clippy、格式检查、隔离桌面 15 项回归及全屏/平移/应用退出检查通过。本轮没有实施 Play Event 或增加 play_count；已关闭测试窗口和 1420 服务、重置截图会话，到此停止。详见 [Phase 6 验证记录](docs/validation/phase6-validation.md)。
+Event Log + Counter Cache 已完成：Like、Activation View、Qualified Play、一次终结及后台统计重建。前端 47/47，两种 Rust 配置各 66/66（含真实 FFmpeg），构建、开发监听、Clippy、格式与真实桌面回归通过。100,002 媒体分批重建、并发事件、COMMIT 故障及恢复均已验证。测试窗口/服务已关闭，截图会话已释放；本轮停止，不推进下一阶段。详见 [Phase 7 验证记录](docs/validation/phase7-validation.md)。
 
 ## Phase 4 验收历史（2026-11-08）
 
@@ -195,22 +195,23 @@ Phase 0 已将用户批准规则写入设计并通过 15 项 architecture review
 - 清理后使用 Phase 1 隔离 Tauri 方式完成 UI 11/11 DOM 断言（含双媒体批量增删、分页/虚拟化）；修复夹具在标签内存更新后过早查 DOM 的竞态，不删除或跳过断言。另用 111 个合成媒体通过正式 SQLite/Tauri IPC、递归目录筛选、100＋11 分页、真实 thumbnail/视频 metadata 与标签添加验收，原图摘要不变、事件数仍为零。
 - 上轮 Chrome browser host/URL 审批问题仍作为通道限制保留，不宣称它已修复；本轮原生桌面验收已独立通过。测试结束两个 Tauri 进程正常退出、测试窗口为空、1420 无监听。详见 [Phase 5 验证与截图](docs/validation/phase5-validation.md)。
 
-## 后续路线 — Activity、Playback State 与 Statistics（未授权）
-
-- **状态：未开始**；依赖：Phase 1、Phase 4；资格语义已经冻结，不再以旧 Q03–Q05 阻塞。
-- Like：五次主动动作产生五事件，相同动作重试只一次；无 toggle/撤销。View：A→B→A 三次，render/resize/fullscreen/预加载零次。
-- Play：打开不计，普通视频 >=5 秒真实播放才计，<5 秒短片真实 ended 才计；恰好 5 秒、未知时长、2x、seek、pause/resume、失败/重试有边界用例。同 session 最多一个，切换/结束后新 session 可再计。
-- 生命周期：资格 INSERT+Counter Cache 同事务；结束只补全同一行，不再计数；终结重试、崩溃 interrupted、禁止改身份/资格字段测试通过。
-- PlaybackState 独立保存，无事件也可恢复；CAS/owner/旧版本拒绝陈旧覆盖；completed 覆盖 95% OR remaining<=min(10s,5% duration)，短片 seek 到近尾不能替代真实 Play 资格。
-- 统计：注入 INSERT、计数更新、重建 delta、COMMIT 失败均整体 rollback。rebuild_like_count、rebuild_all_like_counts 与统一 rebuild 正确含零项；高水位/base/delta/checkpoint 在并发事件、取消、崩溃续跑下不漏计双计，发布每媒体原子、全库分批，UI 保持可用。
-
-## Phase 6 — ImageViewer、VideoPlayer 与进度（当前授权）
+## Phase 6 — ImageViewer、VideoPlayer 与进度（验收历史）
 
 - **状态：已验收（Windows，2026-11-08）。** 图片 previous/next/zoom/pan/fit/100%/fullscreen，视频 play/pause/timeline/volume/mute/speed/fullscreen/previous/next，二者有 Details/Custom Tag。
 - 受限 media URI 只接受打开后的短期 token/mode，不接收原始路径；后端只读句柄和 bounded Range 请求，关闭即撤销。原媒体目录不加入 asset scope。
 - Direct → Remux → H.264/AAC Proxy，后台/可取消/超时，复用全局 FFmpeg gate；缓存按 ID/version/fingerprint/stat/profile 隔离，验证后原子发布，有界容量与活动句柄 pin。
 - v6 migration 仅加入 playback_owners。PlaybackState 按稳定 ID/版本独立保存，owner + state_version + sequence 防止迟到写；前端串行合并 checkpoint，失败先按同一请求重试。保存点包含 5 秒周期、pause/ended、切换、关闭、pagehide/visibility，以及原生关闭前最多 3 秒尽力 flush。
 - 前端 Node 42/42、两种 Rust feature 配置各 54/54（含真实 FFmpeg）、开发监听 1/1、build/Clippy/fmt 已通过。真实 Tauri 回归 15 项通过，并验证图片拖动、图片/视频全屏和退出保存 24.5 秒；事件/播放计数为零、5 个合成原件指纹不变。修复仅音频可解码时的黑屏回退与重载会话回收，见 [验证与截图](docs/validation/phase6-validation.md)。没有新增 Play/View/Like Event 或 completed 资格判断；不推进下一 Phase。
+
+## Phase 7 — Event Log + Counter Cache（当前授权）
+
+- **状态：已验收（Windows，2026-11-09）。** 三个事件日志为事实来源，media 计数仅为 Counter Cache。新增 v7 migration，旧事件与约束保留；Counter Cache 继续由原触发器维护，服务不重复累加。
+- add_like 按 request_id 幂等；4 并发调用者累计 100 次、日志=100/cache=100。LikeButton 和 L 共用服务，无 toggle/撤销，Ctrl/Alt/Meta 组合及键盘自动重复不误记主动 Like。
+- record_view 按 viewer ordinal/activation 幂等，媒体成为当前主项后才提交；hover/预取/rerender 不记，A→B→A 三次，source 支持全部五种批准值。
+- record_play/open_player_session 基于正常播放状态与单调经过时间；普通/未知 duration >=5 秒，短片真实 ended，seek/缓冲/暂停/恢复不虚构观看。资格 INSERT，一次 finalize_play 补全最后状态，无重复计数；completed 使用批准公式，独立进度路径仍不写事件。
+- rebuild_like/view/play_count、各 all_counts 及 rebuild_statistics 后台高水位/base/delta/checkpoint；1000 日志/100 媒体短事务，有界清理、取消、失败与崩溃续跑，不在普通启动全库重建。单媒体计数/时间原子发布，全库逐批修复。
+- 12 项新增 Rust 场景包含 Like/View/Play 事务失败、COMMIT 失败、重建并发/恢复/零项、播放与 activation 边界；完整前端 47/47、backend 两种配置各 66/66，build/test:dev/Clippy/fmt 通过。100,002 媒体/2,502 事件在 1,009 步完成，桌面 10 项真实 IPC 回归与原生 L 检查通过，退出查库全部缓存及最近时间零差异。
+- 验收截图、实测和清理见 [Phase 7 记录](docs/validation/phase7-validation.md)。不新增 Quick Browser/History 页面或文件操作，到此停止。
 
 ## 后续路线 — 恢复、规模与发布验收（未授权）
 
@@ -222,6 +223,6 @@ Phase 0 已将用户批准规则写入设计并通过 15 项 architecture review
 
 ## 依赖与状态维护
 
-主路径 0→1→2→3→4→5→6；数据层接口可在依赖已满足时细化，不能因阶段重排绕过事务和模块边界。每次推进记录完成范围、实际验证命令/结果和剩余风险。
+主路径 0→1→2→3→4→5→6→7；数据层接口可在依赖已满足时细化，不能因阶段重排绕过事务和模块边界。每次推进记录完成范围、实际验证命令/结果和剩余风险。
 
-当前授权以 Phase 6 viewer/player/progress 指令为准；完整测试后停止。Play Event 在下一 Phase 另行实现，不能从打开/播放或位置保存推导播放计数。阶段授权与阶段验收分别记录。
+当前授权为 Phase 7 Event Log + Counter Cache，完整测试通过后停止；打开播放器或保存位置本身不等于有效 Play。阶段授权与阶段验收分别记录。

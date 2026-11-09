@@ -11,6 +11,23 @@ pub struct EventRepository<'a> {
 }
 
 impl EventRepository<'_> {
+    pub fn cached_statistics(
+        &self,
+        media_id: &str,
+    ) -> AppResult<crate::domain::activity::ActivityResult> {
+        Ok(self.connection.query_row(
+            "SELECT like_count,view_count,play_count FROM media WHERE id=?1",
+            [media_id],
+            |r| {
+                Ok(crate::domain::activity::ActivityResult {
+                    id: media_id.into(),
+                    like_count: r.get(0)?,
+                    view_count: r.get(1)?,
+                    play_count: r.get(2)?,
+                })
+            },
+        )?)
+    }
     pub fn counts(&self, media_id: &str) -> AppResult<Option<EventCounts>> {
         Ok(self
             .connection
@@ -46,9 +63,11 @@ impl EventRepository<'_> {
         Ok(rows.collect::<Result<_, _>>()?)
     }
     pub fn views(&self, media_id: &str, after_seq: i64, limit: u32) -> AppResult<Vec<ViewEvent>> {
-        let mut statement = self.connection.prepare("SELECT id,ingest_seq,request_id,media_id,activation_id,occurred_at,recorded_at,policy_version FROM view_events WHERE media_id=?1 AND ingest_seq>?2 ORDER BY ingest_seq LIMIT ?3")?;
+        let mut statement = self.connection.prepare("SELECT id,ingest_seq,request_id,media_id,activation_id,occurred_at,recorded_at,policy_version,source,viewed_at FROM view_events WHERE media_id=?1 AND ingest_seq>?2 ORDER BY ingest_seq LIMIT ?3")?;
         let rows = statement.query_map(params![media_id, after_seq, page_size(limit)?], |r| {
             Ok(ViewEvent {
+                source: r.get(8)?,
+                viewed_at: r.get(9)?,
                 id: r.get(0)?,
                 ingest_seq: r.get(1)?,
                 request_id: r.get(2)?,

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-statistics-job"
+description = "Enables the statistics_job command without any pre-configured scope."
+commands.allow = ["statistics_job"]
+
+[[permission]]
+identifier = "deny-statistics-job"
+description = "Denies the statistics_job command without any pre-configured scope."
+commands.deny = ["statistics_job"]

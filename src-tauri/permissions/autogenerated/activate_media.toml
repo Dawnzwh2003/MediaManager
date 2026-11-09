@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-activate-media"
+description = "Enables the activate_media command without any pre-configured scope."
+commands.allow = ["activate_media"]
+
+[[permission]]
+identifier = "deny-activate-media"
+description = "Denies the activate_media command without any pre-configured scope."
+commands.deny = ["activate_media"]

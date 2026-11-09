@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-rebuild-statistics"
+description = "Enables the rebuild_statistics command without any pre-configured scope."
+commands.allow = ["rebuild_statistics"]
+
+[[permission]]
+identifier = "deny-rebuild-statistics"
+description = "Denies the rebuild_statistics command without any pre-configured scope."
+commands.deny = ["rebuild_statistics"]

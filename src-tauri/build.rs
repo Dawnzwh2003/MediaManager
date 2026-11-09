@@ -14,6 +14,15 @@ fn main() {
             "prepare_playback",
             "viewer_navigation",
             "get_playback_state",
+            "add_like",
+            "get_statistics",
+            "activate_media",
+            "open_player_session",
+            "report_playback",
+            "close_activity",
+            "rebuild_statistics",
+            "statistics_job",
+            "cancel_statistics_rebuild",
         ]),
     ))
     .expect("failed to build the Tauri application manifest");

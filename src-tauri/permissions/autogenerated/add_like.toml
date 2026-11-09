@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-add-like"
+description = "Enables the add_like command without any pre-configured scope."
+commands.allow = ["add_like"]
+
+[[permission]]
+identifier = "deny-add-like"
+description = "Denies the add_like command without any pre-configured scope."
+commands.deny = ["add_like"]

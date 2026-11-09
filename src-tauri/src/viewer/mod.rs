@@ -75,6 +75,21 @@ pub(crate) fn now() -> AppResult<i64> {
         .as_millis() as i64)
 }
 impl ViewerService {
+    pub fn authorize_activity(
+        &self,
+        database: &mut Database,
+        token: &str,
+        activation: &crate::domain::activity::Activation,
+    ) -> AppResult<()> {
+        let session = self.session(token)?;
+        Self::validate(database, &session)?;
+        if session.media.id != activation.media_id
+            || session.media.content_version_id != activation.content_version_id
+        {
+            return Err(AppError::StaleState);
+        }
+        Ok(())
+    }
     fn session(&self, token: &str) -> AppResult<Arc<Session>> {
         if token.len() != 32 || !token.bytes().all(|c| c.is_ascii_hexdigit()) {
             return Err(AppError::NotFound);

@@ -1,7 +1,7 @@
 use super::*;
 
 const SECOND: Migration = Migration {
-    version: 7,
+    version: 8,
     name: "test_extension",
     sql: "CREATE TABLE test_extension (id INTEGER PRIMARY KEY, value TEXT NOT NULL) STRICT;",
 };
@@ -246,6 +246,11 @@ fn newer_database_is_rejected_before_persistent_connection_changes() {
             version: 6,
             name: MIGRATIONS[5].name,
             sql: MIGRATIONS[5].sql,
+        },
+        Migration {
+            version: 7,
+            name: MIGRATIONS[6].name,
+            sql: MIGRATIONS[6].sql,
         },
         SECOND,
     ];

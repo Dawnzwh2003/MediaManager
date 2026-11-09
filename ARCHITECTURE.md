@@ -2,7 +2,7 @@
 
 ## 当前基线与本轮变更理由
 
-身份、重复文件、保守匹配、Like、Activation View、Qualified Play、播放状态、completed、三层播放及 100,000+ 架构已获用户批准。本文区分总体设计与实际实现；当前用户已授权 Phase 2 数据模型与数据库层，scanner、Event Service 和业务 UI 尚未实现。依赖版本与平台参数在对应 Phase 验证。
+身份、重复文件、保守匹配、Like、Activation View、Qualified Play、播放状态、completed、三层播放及 100,000+ 架构已获用户批准。当前已实施至 Phase 7：扫描、metadata/thumbnail、Library、Viewer/Player、事件服务与后台统计修复；各 Phase 小节中的范围限制保留为当时历史，实际增量见文末 Phase 7。依赖版本与平台参数在对应 Phase 验证。
 
 当前工具链政策由用户最新授权改为 Rust stable，本机 rustc/cargo 为 1.99.1（D025）。rust-toolchain.toml 选择实际编译通道，Cargo.toml 的 rust-version=1.90 仍是最低版本声明，不能当作当前 pin 或最低版本已验收。npm/Cargo 依赖及真实锁文件均已到位；2026-11-04 类型检查、前端构建、完整 Rust 测试/Clippy、Tauri info、正式 release 构建及隔离的真实桌面 IPC/持久化/实例锁检查均通过。浏览器预览专项仍受工具阻塞，阶段状态见 PLANS.md。以下 Phase 1 版本描述为历史快照。
 
@@ -376,6 +376,18 @@ DTO 版本化，TypeScript strict，Rust 最终校验。ID/计数/sequence 用�
 - ImageViewer 只加载当前原图，支持 fit/100%/锚点缩放/受限平移及全屏；VideoPlayer 用受限资源 URL，提供自定义播放/暂停/seek/音量/静音/速率/全屏。前后项在 SQLite 按原筛选/排序 keyset 查邻居，后台改变时 stale_cursor 明确拒绝，用户主动标签修改后刷新导航，不偷偷重排 Quick Browse（本轮不实现该会话）。
 - ProgressSaver 以单 in-flight + 一个最新快照合并串行写；失败先重试相同 sequence/expected_version/事实，再保存最新位置。5 秒 checkpoint、pause、ended、切换、关闭、pagehide/visibility 都可刷新；原生 CloseRequested 阻止立即退出，最多等 3 秒尽力 flush，再 destroy 窗口。强制终止/断电可能损失最后一个 checkpoint 间隔，不能因此虚构 Play。
 - 图片/视频 Details 与 Custom Tag 使用既有 Library 接口；本阶段没有 Like/View/Play 写入口，也不从真实播放或位置持久化增加 play_count。
+
+## Phase 7 已实施的事件与统计
+
+- v7 migration 保留既有事件身份、日志不可变触发器及 Counter Cache 触发器，仅为 View 添加受约束 source 与 generated viewed_at（等于 occurred_at），增加 viewer_activations、player_sessions 和 statistics_jobs/base/delta。旧 View 缺乏来源事实，迁移默认 normal_viewer，不能将该默认当作已观察到的历史来源；不改原事件时间、媒体或计数事实。
+- ActivityService 决定资格，ActivityTransaction 负责参数化存储；后台连接共享短事务 activity_gate，SQLite IMMEDIATE 事务避免读后升级竞态。Like 的新动作分配新 request_id；同请求同媒体重试返回原结果，冲突拒绝。事件 INSERT、sequence、既有 trigger 的 +1 和重建 delta 同事务；没有服务层第二次累加。
+- ViewerShell 的 ActivationController 在明确切换时推进 ordinal，渲染、Details、缩放、全屏和兼容资源切换复用身份。当前主媒体挂载后，经 media token 验证媒体/版本，再调用 activate_media；旧 ordinal 拒绝，同 activation 幂等，离开后再回来分配新身份。内部 record_view 不开放为绕过资源验证的 IPC。source 类型支持全部批准值，本轮不实施 Quick Browse/History 页面。
+- 每 activation 的视频只有一个 player session，pause/resume/seek/重播及 Direct/Remux/Proxy 共用。report_playback 上报有序单调时钟、位置、速率与 playing/paused/waiting/seeking/ended 边界；前端保留每个边界，失败按相同 payload/sequence 重试并暂停播放提示。后端以客户端单调间隔、服务端单调经过时间及正常位置推进/速率的交集累计实际观看，每段最多 2 秒；缺失大段证据保守不补算，seek、恢复、缓冲、暂停不增加观看。
+- duration>=5 或未知时 watched>=5 才 record_play；duration<5 时须 observed ended，并有实际播放推进至尾的证据，seek/恢复本身不能触发。浏览器 pause-before-ended 沿用上一有效尾部播放证据；不把 completed 的 95% 当作短片资格。qualified_at 时仅 INSERT 一次；关闭/切换后 finalize_play 一次补全 ended_at/end_position/watched_seconds/completed/end_reason，数据库冻结后续更新且不再计数。completed 严格使用 95% OR remaining<=min(10s,5% duration)。异常恢复在后台按最多 100 个旧 session 一批，只终结最后已持久化事实，不虚构播放时间。
+- StatisticsService 提供三个 kind 的单媒体/全库函数及统一 rebuild_statistics。普通启动不新建重建任务，只续跑持久化任务。每任务冻结 db_sequence 高水位 H；三日志按 ingest_seq<=H 每批最多 1000 聚合磁盘 base，同事务推进 checkpoint。并发 INSERT 的 trigger 同事务写 delta。按 id 每批最多 100 个 created_seq<=H 的媒体，原子发布所选计数与时间字段；包含零事件媒体，之后的事件继续正常 +1。已发布媒体不再覆盖，新媒体不进入旧目标。
+- 发布结束先停 delta 捕获，base/delta 按最多 1000 行清理。崩溃按 checkpoint 续跑；取消同一短事务停捕获并清理，失败标记 failed、保留日志和已发布修复，后续后台有界清理派生 scratch，可用新 request 重试。全库修复逐媒体生效，UI 展示 running/cleaning/complete/cancelled/failed，不宣称全库瞬时原子切换。
+- LikeButton 和 L 都进入 activityApi.addLike → 同一 add_like service；响应更新当前计数，不以 optimistic increment 代替事务成功，不合并主动动作。重试保留失败 request_id，前台自身 Like 后刷新导航代次；其他后台变化仍明确报告 stale cursor。重建按钮只启动后台 job，不进行全库前端统计或原件读取。原件资源/标签/进度边界保持不变。
+- 验证：100 并发/快速 Likes、Like/View/Play 故障回滚、COMMIT 失败、activation、资格/终结、重建并发及恢复、100,002 媒体分批实测、真实 Tauri 交互与解码。记录与截图见 [Phase 7 验收](docs/validation/phase7-validation.md)。WebView 上报用于正常客户端顺序/状态校验，不声称可抵御修改客户端伪造播放证据。
 
 ## 技术依据
 

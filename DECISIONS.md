@@ -223,6 +223,14 @@
 - 保存：5 秒 checkpoint、pause、切换、viewer close、原生关闭前最多 3 秒等待及 pagehide/visibility 尽力写。串行/合并快照，owner+CAS+sequence 防旧会话覆盖，错误可重试。打开/暂停/seek/保存不写事件；completed 资格和计数留给下一阶段。
 - 验证：合成媒体与临时数据库、真实 FFmpeg、隔离 Tauri 解码/交互及退出后只读查库；结束关闭窗口/端口并重置截图会话。结果见 PLANS.md 和本阶段验证记录，不把命令行通过冒充 UI 播放通过。
 
+## D029 — Phase 7 事件写入与有界统计修复
+
+- 状态：用户明确授权 Event Log + Counter Cache；沿用已冻结的 activation 和五秒/短片 ended 语义，不采用三秒时间 debounce 或 Like toggle。
+- 理由/迁移：v2 已有不可变事件与事务内计数 trigger，但缺少工作会话和重建 delta。追加 0007，为 View 添加 source/viewed_at、建立 activation/player 工作状态及磁盘 base/delta/checkpoint；不修改旧 migration、事件身份或历史时间。既有无 source 的 View 默认 normal_viewer，迁移默认不代表已知历史来源。
+- 决策：Like request 幂等；View ordinal/activation 幂等；Play session/sequence/单调正常播放证据达到资格才 INSERT，终结只受限补全同一行。保留既有 trigger 作为计数更新唯一入口，服务不得重复 +1。播放进度仍是独立命令及状态。
+- 重建：高水位冻结目标，1000 日志/100 媒体的短事务，事件事务同步 delta，逐媒体发布及后台清理；普通启动只恢复已有任务，不全库重建。启动时旧播放器会话在后台分批以最后持久化事实标 interrupted。
+- UI/验证：Like 与 L 共用服务；后台重建状态可见。使用独立合成库和真实 Tauri IPC，100 rapid Likes、故障/COMMIT 回滚、资格边界、重建并发与 100,002 媒体规模实测；最终完整测试及清理证据见本阶段验收记录。原件默认只读、未增加后续浏览模式或文件操作。
+
 ## 后续事项
 
 版本/驱动选型在 Phase 1 锁定；平台播放 profile/许可、页面、标签展示、Quick Browse UX 及规模实测留待后续单独授权。未来 manual relink、原文件编辑/删除或内容聚合必须另立决策和迁移，不是当前功能。当前无待冻结的身份或 Like/View/Play 核心业务语义。

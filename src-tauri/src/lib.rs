@@ -104,7 +104,16 @@ pub fn run() -> tauri::Result<()> {
             commands::save_playback_state,
             commands::prepare_playback,
             commands::viewer_navigation,
-            commands::get_playback_state
+            commands::get_playback_state,
+            commands::add_like,
+            commands::get_statistics,
+            commands::activate_media,
+            commands::open_player_session,
+            commands::report_playback,
+            commands::close_activity,
+            commands::rebuild_statistics,
+            commands::statistics_job,
+            commands::cancel_statistics_rebuild
         ])
         .run(tauri::generate_context!())
 }

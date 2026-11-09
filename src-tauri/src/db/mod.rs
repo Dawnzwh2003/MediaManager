@@ -20,6 +20,7 @@ use crate::{
 pub const BUSY_TIMEOUT_MS: u32 = 2_000;
 
 pub struct Database {
+    pub(crate) activity_gate: Arc<std::sync::Mutex<()>>,
     connection: Connection,
     // Held for the entire connection lifetime; a second app cannot migrate/write.
     _instance_lock: Arc<File>,
@@ -28,18 +29,25 @@ pub struct Database {
 }
 
 impl Database {
+    pub(crate) fn statistics_store(&mut self) -> repositories::statistics::StatisticsStore<'_> {
+        repositories::statistics::StatisticsStore(&mut self.connection)
+    }
+    pub(crate) fn activity_store(&mut self) -> &mut Connection {
+        &mut self.connection
+    }
     pub(crate) fn derivative_store(&mut self) -> repositories::derivatives::DerivativeStore<'_> {
         repositories::derivatives::DerivativeStore(&mut self.connection)
     }
 
     // Internal background connection shares the lifetime lock; never acquires a second writer instance.
-    pub(crate) fn background_connection(&self) -> AppResult<Self> {
+    pub fn background_connection(&self) -> AppResult<Self> {
         validate_managed_file(&self.paths.database)?;
         let connection = Connection::open(&self.paths.database)?;
         connection.busy_timeout(Duration::from_millis(u64::from(BUSY_TIMEOUT_MS)))?;
         connection.pragma_update(None, "foreign_keys", true)?;
         connection.pragma_update(None, "synchronous", "FULL")?;
         Ok(Self {
+            activity_gate: Arc::clone(&self.activity_gate),
             connection,
             _instance_lock: Arc::clone(&self._instance_lock),
             paths: self.paths.clone(),
@@ -105,6 +113,7 @@ impl Database {
         migrations::migrate(&mut connection, &paths.data)?;
 
         Ok(Self {
+            activity_gate: Arc::new(std::sync::Mutex::new(())),
             connection,
             _instance_lock: Arc::new(lock),
             paths: paths.clone(),
