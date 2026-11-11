@@ -1,8 +1,8 @@
 # 分阶段开发计划
 
-## 当前状态（Phase 8）
+## 当前状态（Phase 9）
 
-Phase 8 完整查询已通过 Windows 验收。三类搜索、组合筛选、15 种排序和稳定 Random 已验证。前端 48/48，两种 Rust 配置各 70/70，桌面 10 项检查通过。测试窗口、1420 服务和截图会话已清理，本轮停止。详见 [Phase 8 验证记录](docs/validation/phase8-validation.md)。
+Phase 9 Quick Browse 已通过 Windows 验收（2026-11-11）。固定会话、全部快捷键、数字标签 Toggle、视频自动播放/默认静音和共享活动服务已实现。前端 52/52，两种 Rust 配置各 78/78，真实桌面 15 项回归及原生全屏/Space/Esc 验证通过。测试窗口、1420 监听和截图会话已清理，本轮停止。详见 [Phase 9 验证记录](docs/validation/phase9-validation.md)。
 
 ## Phase 4 验收历史（2026-11-08）
 
@@ -221,6 +221,15 @@ Phase 0 已将用户批准规则写入设计并通过 15 项 architecture review
 - 普通和随机各遍历 100,000 项及 1,000 页，无重复和遗漏。桌面配置普通 p95 为 1.261 ms，随机热分页 p95 为 1.950 ms，随机建索引加首页为 1,562.122 ms。组合筛选的 2,001 项结果和实际 EXPLAIN 检查均通过。
 - 自动测试、构建、Clippy、格式检查与隔离桌面截图见 [Phase 8 验证记录](docs/validation/phase8-validation.md)。
 
+## Phase 9 — Quick Browse（已完成）
+
+- 从当前 search/filter/sort 固定成员与内容版本，保存 session ID、started_at/ended_at、query_sort、filter snapshot、random seed/算法版本和当前位置。v9 追加迁移，历史模型、媒体身份和事件约束保留。
+- 独立后台 worker 流式查询 ID/版本，经 cache/browse 磁盘 spool 后最多 1,000 项一批发布；默认 512 MiB spool/120 秒源快照、单构建、可取消/失败清理和重启中断恢复。前端每次只获取当前成员/原件，API 最多 200 项，不全库加载或排序。
+- Left/Right/Space、L/T/F/I/R/Esc 与 1–9 已接入。数字键可配置 Custom Tag，事务 Toggle 加回执保证重试幂等，短暂反馈；标签不改物理目录。视频可配置 autoplay/mute，复用 Phase 6/7 进度、播放资格与 Like Service，View source=quick_browser。
+- R 新 seed/新会话成功发布时原子结束父会话；标签、活动、扫描、分页与重渲染不改变已发布成员和 ordinal。损坏/缺失/版本变化保留原槽位，可继续浏览。历史快照元数据保留；未增加会话恢复页、保留期或后续 Phase 功能。
+- 新增 8 项 Rust 场景和 4 项前端测试。完整前端 52/52、开发监听 1/1、Rust 两种配置各 78/78（真实 FFmpeg 无跳过）、两种 Clippy、build/fmt/diff-check 通过。100,001 随机成员构建桌面配置 10.152 秒，101 批、每批最多 1,000，200 项分页 p95=3.243 ms；冻结源读期间并发 Like/新增正常提交，源快照不纳入新增。
+- 隔离合成库真实 Tauri 15 项回归全部通过；原生 F 全屏、Space 下一项、全屏下 Esc 退出/恢复窗口通过。修复视频退出时父子重复保存已释放 owner 的问题，回归覆盖保存后释放/结束会话。截图、失败修复与最终结果见 [验收记录](docs/validation/phase9-validation.md)。桌面 CLI 正常退出，1420 无监听，截图内核已重置。到此停止。
+
 ## 后续路线 — 恢复、规模与发布验收（未授权）
 
 - **状态：未开始**；依赖：Phase 1–5。
@@ -231,6 +240,6 @@ Phase 0 已将用户批准规则写入设计并通过 15 项 architecture review
 
 ## 依赖与状态维护
 
-主路径 0→1→2→3→4→5→6→7→8。数据层接口在依赖满足后细化。每次推进记录完成范围、实际验证结果和剩余风险。
+主路径 0→1→2→3→4→5→6→7→8→9。数据层接口在依赖满足后细化。每次推进记录完成范围、实际验证结果和剩余风险。
 
-当前授权为 Phase 8 完整查询系统，性能验证后停止。
+当前授权为 Phase 9 Quick Browse，测试与文档更新完成，停止。

@@ -9,6 +9,7 @@ import { TagSelector } from "../library/TagSelector.tsx";
 import { customFilterIds, hasLibraryFilters, LibraryController, MAX_SELECTION, toggleSelection } from "../library/model.ts";
 import { ViewerShell } from "../viewer/ViewerShell.tsx";
 import { StatisticsControl } from "../library/StatisticsControl.tsx";
+import { QuickBrowseShell } from "../quick-browse/QuickBrowseShell.tsx";
 
 export function App() {
   const controller = useMemo(() => new LibraryController(libraryApi.query), []);
@@ -18,6 +19,7 @@ export function App() {
   const [revision, setRevision] = useState(0);
   const [modal, setModal] = useState<"manage" | "batch" | null>(null);
   const [viewing, setViewing] = useState<string | null>(null);
+  const [quick, setQuick] = useState(false);
   useEffect(() => { void controller.refresh(); return controller.cancel; }, [controller]);
   const change = useCallback((filter: LibraryFilter) => { setSelected(new Set()); setFocused(null); void controller.change(filter); }, [controller]);
   const refresh = useCallback(() => { setRevision(r => r + 1); void controller.refresh(); }, [controller]);
@@ -31,6 +33,7 @@ export function App() {
   useEffect(() => { const close = (event: KeyboardEvent) => { if (event.key === "Escape") setModal(null); }; window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, []);
   return <main className="library-shell"><Sidebar filter={state.filter} onFilter={change} revision={revision} onManage={() => setModal("manage")} />
     <section className="library-main" aria-label="Media Library"><header className="library-header"><div><span className="eyebrow">YOUR COLLECTION, IN FOCUS</span><h1>媒体库<span className="heading-dot">.</span></h1><p>把目光留给内容，把整理交给标签。</p></div><span className="local-badge"><span className="status-dot" /> LOCAL LIBRARY</span></header>
+      <button className="secondary" disabled={state.loading || !!state.error} onClick={() => setQuick(true)}>Quick Browse · 键盘浏览</button>
       <FilterBar filter={state.filter} change={change} refresh={refresh} shuffle={() => {
         setSelected(new Set());
         setFocused(null);
@@ -42,5 +45,6 @@ export function App() {
     </section><DetailsPanel id={focused} close={() => setFocused(null)} revision={revision} changed={changed} />
     {modal && <div className="modal-backdrop" onClick={e => { if (e.target === e.currentTarget) setModal(null); }}><section className="tag-modal" role="dialog" aria-modal="true" aria-labelledby="tag-modal-title"><div className="panel-heading"><div><span className="eyebrow">CUSTOM TAGS</span><h2 id="tag-modal-title">{modal === "manage" ? "管理你的标签" : `为 ${selected.size} 项批量编辑标签`}</h2></div><button className="icon-button" onClick={() => setModal(null)} aria-label="关闭标签窗口" autoFocus>×</button></div><TagSelector key={modal} manage={modal === "manage"} mediaIds={modal === "batch" ? [...selected] : []} revision={revision} changed={changed} /></section></div>}
     {viewing && <ViewerShell initialId={viewing} filter={state.filter} close={() => {setViewing(null);refresh();}} revision={revision} changed={changed} />}
+    {quick && <QuickBrowseShell filter={state.filter} revision={revision} changed={changed} close={() => { setQuick(false); refresh(); }} />}
   </main>;
 }

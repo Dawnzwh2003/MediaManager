@@ -23,13 +23,25 @@
                         "core:event:allow-unlisten",
                         "core:window:allow-destroy",
                         "allow-add-like",
-        "allow-get-statistics",
+                        "allow-get-statistics",
                         "allow-activate-media",
                         "allow-open-player-session",
                         "allow-report-playback",
                         "allow-close-activity",
                         "allow-rebuild-statistics",
                         "allow-statistics-job",
-                        "allow-cancel-statistics-rebuild"
+                        "allow-cancel-statistics-rebuild",
+                        "allow-create-quick-browse",
+                        "allow-get-quick-browse",
+                        "allow-quick-browse-items",
+                        "allow-select-quick-browse",
+                        "allow-shuffle-quick-browse",
+                        "allow-close-quick-browse",
+                        "allow-get-quick-browse-settings",
+                        "allow-save-quick-browse-settings",
+                        "allow-toggle-quick-browse-tag",
+                        "allow-open-quick-browse-item",
+                        "core:window:allow-is-fullscreen",
+                        "core:window:allow-set-fullscreen"
                     ]
 }

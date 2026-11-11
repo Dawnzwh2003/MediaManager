@@ -1,4 +1,125 @@
 use crate::domain::library_query::*;
+use crate::domain::quick_browse::*;
+
+#[tauri::command]
+pub async fn create_quick_browse(
+    state: tauri::State<'_, Arc<AppState>>,
+    request: QuickBrowseRequest,
+) -> AppResult<BrowseSession> {
+    library_call(Arc::clone(state.inner()), move |db| {
+        crate::services::quick_browse::create(db, &request)
+    })
+    .await
+}
+#[tauri::command]
+pub async fn get_quick_browse(
+    state: tauri::State<'_, Arc<AppState>>,
+    session_id: String,
+) -> AppResult<BrowseSession> {
+    library_call(Arc::clone(state.inner()), move |db| {
+        crate::services::quick_browse::get(db, &session_id)
+    })
+    .await
+}
+#[tauri::command]
+pub async fn quick_browse_items(
+    state: tauri::State<'_, Arc<AppState>>,
+    session_id: String,
+    after: i64,
+    limit: u32,
+) -> AppResult<Vec<BrowseItem>> {
+    library_call(Arc::clone(state.inner()), move |db| {
+        crate::services::quick_browse::items(db, &session_id, after, limit)
+    })
+    .await
+}
+#[tauri::command]
+pub async fn select_quick_browse(
+    state: tauri::State<'_, Arc<AppState>>,
+    session_id: String,
+    ordinal: i64,
+) -> AppResult<()> {
+    library_call(Arc::clone(state.inner()), move |db| {
+        crate::services::quick_browse::select(db, &session_id, ordinal)
+    })
+    .await
+}
+#[tauri::command]
+pub async fn shuffle_quick_browse(
+    state: tauri::State<'_, Arc<AppState>>,
+    session_id: String,
+    request_id: String,
+) -> AppResult<BrowseSession> {
+    library_call(Arc::clone(state.inner()), move |db| {
+        crate::services::quick_browse::reshuffle(db, &session_id, &request_id)
+    })
+    .await
+}
+#[tauri::command]
+pub async fn close_quick_browse(
+    state: tauri::State<'_, Arc<AppState>>,
+    session_id: String,
+) -> AppResult<()> {
+    state.cancel_browse(&session_id)?;
+    library_call(Arc::clone(state.inner()), move |db| {
+        crate::services::quick_browse::close(db, &session_id)
+    })
+    .await
+}
+#[tauri::command]
+pub async fn get_quick_browse_settings(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> AppResult<BrowseSettings> {
+    library_call(
+        Arc::clone(state.inner()),
+        crate::services::quick_browse::settings,
+    )
+    .await
+}
+#[tauri::command]
+pub async fn save_quick_browse_settings(
+    state: tauri::State<'_, Arc<AppState>>,
+    preferences: BrowsePreferences,
+    session_id: Option<String>,
+) -> AppResult<BrowseSettings> {
+    library_call(Arc::clone(state.inner()), move |db| {
+        crate::services::quick_browse::save_settings(db, &preferences, session_id.as_deref())
+    })
+    .await
+}
+#[tauri::command]
+pub async fn toggle_quick_browse_tag(
+    state: tauri::State<'_, Arc<AppState>>,
+    request: ToggleTagRequest,
+) -> AppResult<ToggleTagResult> {
+    library_call(Arc::clone(state.inner()), move |db| {
+        crate::services::tag_toggle::toggle_for_quick_browse(db, &request)
+    })
+    .await
+}
+#[tauri::command]
+pub async fn open_quick_browse_item(
+    state: tauri::State<'_, Arc<AppState>>,
+    session_id: String,
+    ordinal: i64,
+) -> AppResult<ViewerOpen> {
+    if ordinal < 0 {
+        return Err(AppError::Validation("invalid browse ordinal".into()));
+    }
+    viewer_call(Arc::clone(state.inner()), move |service, db| {
+        let session = crate::services::quick_browse::get(db, &session_id)?;
+        if session.current_ordinal != Some(ordinal) {
+            return Err(AppError::StaleState);
+        }
+        let item = crate::services::quick_browse::items(db, &session_id, ordinal - 1, 1)?
+            .into_iter()
+            .next()
+            .filter(|item| item.ordinal == ordinal && item.available)
+            .ok_or(AppError::NotFound)?;
+        service.open_version(db, &item.media_id, Some(item.content_version_id))
+    })
+    .await
+}
 #[tauri::command]
 pub async fn get_statistics(
     state: tauri::State<'_, Arc<AppState>>,

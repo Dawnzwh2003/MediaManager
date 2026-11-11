@@ -22,7 +22,7 @@ impl QuickBrowseRepository<'_> {
     ) -> AppResult<()> {
         nonempty(id)?;
         self.connection.execute(
-            "INSERT INTO quick_browse_sessions(id,sort_mode,seed,filter_json,created_at) VALUES(?1,?2,?3,?4,?5)",
+            "INSERT INTO quick_browse_sessions(id,sort_mode,seed,filter_json,created_at,started_at,query_sort) VALUES(?1,?2,?3,?4,?5,?5,CASE WHEN ?2='random' THEN 'random' ELSE 'recent' END)",
             params![id,sort_mode,seed,filter.to_string(),created_at],
         )?;
         Ok(())

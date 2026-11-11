@@ -30,6 +30,12 @@ async function call(command: string, args: Record<string, unknown>): Promise<unk
   try { return await invoke(command, args); } catch (error) { throw toApiError(error); }
 }
 export const viewerApi = {
+  windowFullscreen: async () => isTauri() ? getCurrentWindow().isFullscreen() : Boolean(document.fullscreenElement),
+  setWindowFullscreen: async (enabled: boolean) => {
+    if (isTauri()) { await getCurrentWindow().setFullscreen(enabled); return; }
+    if (enabled) await document.documentElement.requestFullscreen();
+    else if (document.fullscreenElement) await document.exitFullscreen();
+  },
   open: async (id: string) => parseViewerOpen(await call("open_viewer", { id })),
   close: async (token: string) => { await call("close_viewer", { token }); },
   save: async (request: ProgressWrite) => parsePlaybackState(await call("save_playback_state", { request })),
@@ -50,8 +56,8 @@ export const viewerApi = {
 };
 // Serialise ownership claims, including rapid close/reopen and StrictMode effect replay.
 let opening: Promise<unknown> = Promise.resolve();
-export function openViewer(id: string): Promise<ViewerOpen> {
-  const result = opening.then(() => viewerApi.open(id));
+export function openViewer(id: string, open = () => viewerApi.open(id)): Promise<ViewerOpen> {
+  const result = opening.then(open);
   opening = result.catch(() => {});
   return result;
 }

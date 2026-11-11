@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-select-quick-browse"
+description = "Enables the select_quick_browse command without any pre-configured scope."
+commands.allow = ["select_quick_browse"]
+
+[[permission]]
+identifier = "deny-select-quick-browse"
+description = "Denies the select_quick_browse command without any pre-configured scope."
+commands.deny = ["select_quick_browse"]

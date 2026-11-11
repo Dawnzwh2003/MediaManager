@@ -36,6 +36,14 @@ pub(super) fn initialize(connection: &Connection, order: Option<&RandomOrder>) -
 }
 
 pub(super) fn populate(tx: &Transaction<'_>, order: &RandomOrder) -> AppResult<()> {
+    populate_while(tx, order, &|| false)
+}
+
+pub(super) fn populate_while(
+    tx: &Transaction<'_>,
+    order: &RandomOrder,
+    cancelled: &dyn Fn() -> bool,
+) -> AppResult<()> {
     let (cached_seed, mut through): (String, i64) = tx.query_row(
         "SELECT seed,through_seq FROM temp.library_random_state",
         [],
@@ -61,6 +69,9 @@ pub(super) fn populate(tx: &Transaction<'_>, order: &RandomOrder) -> AppResult<(
         )?;
         let prefix = hash_prefix(&order.seed);
         while let Some(row) = rows.next()? {
+            if cancelled() {
+                return Err(AppError::Validation("snapshot_cancelled".into()));
+            }
             let id = row.get_ref(0)?.as_str().map_err(|_| AppError::Internal)?;
             let mut hash = prefix.clone();
             hash_field(&mut hash, id.as_bytes());

@@ -37,6 +37,14 @@ fn system_members(seed_condition: &str) -> String {
 }
 
 impl QueryPlan {
+    pub fn snapshot_statement(&self) -> (String, Vec<Value>) {
+        let direction = if self.ascending { "ASC" } else { "DESC" };
+        let sql = format!(
+            "SELECT m.id,m.current_content_version_id FROM {} WHERE {} ORDER BY {} {direction},{} {direction}",
+            self.from, self.predicates.join(" AND "), self.key, self.id,
+        );
+        (sql, self.values.clone())
+    }
     pub fn new(filter: &LibraryFilter) -> AppResult<Self> {
         use LibrarySort::*;
         let (key, index, ascending, text_key) = match filter.sort {

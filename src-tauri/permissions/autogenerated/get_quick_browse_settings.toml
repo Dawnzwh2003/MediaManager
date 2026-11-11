@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-quick-browse-settings"
+description = "Enables the get_quick_browse_settings command without any pre-configured scope."
+commands.allow = ["get_quick_browse_settings"]
+
+[[permission]]
+identifier = "deny-get-quick-browse-settings"
+description = "Denies the get_quick_browse_settings command without any pre-configured scope."
+commands.deny = ["get_quick_browse_settings"]

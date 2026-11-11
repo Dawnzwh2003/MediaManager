@@ -7,7 +7,7 @@ import {activityApi} from "../api/activity.ts";
 import type {PlaybackPhase} from "../api/activity.ts";
 import {PlaybackReporter} from "./activity-model.ts";
 export interface PlayerControl { stopAndFlush: () => Promise<void> }
-export function VideoPlayer({ session, activationId, fullscreen, register, onQualified }: { activationId:string|null; session: ViewerOpen; fullscreen: () => void; register: (control: PlayerControl | null) => void; onQualified: () => void }) {
+export function VideoPlayer({ session, activationId, fullscreen, register, onQualified, autoplay = false, initiallyMuted = false }: { activationId:string|null; session: ViewerOpen; fullscreen: () => void; register: (control: PlayerControl | null) => void; onQualified: () => void; autoplay?: boolean; initiallyMuted?: boolean }) {
   const video = useRef<HTMLVideoElement>(null);
   const saver = useMemo(() => new ProgressSaver(session.token, session.state!, request => viewerApi.save(request)), [session]);
   const announcedQualification = useRef(false);
@@ -27,7 +27,17 @@ export function VideoPlayer({ session, activationId, fullscreen, register, onQua
   const [preparing, setPreparing] = useState(false);
   const [error, setError] = useState(""); const [saveError, setSaveError] = useState("");
   const [position, setPosition] = useState(session.state!.positionSeconds); const [duration, setDuration] = useState(session.state!.durationSeconds ?? 0);
-  const [playing, setPlaying] = useState(false); const [volume, setVolume] = useState(.8); const [muted, setMuted] = useState(false); const [speed, setSpeed] = useState(1);
+  const [playing, setPlaying] = useState(false); const [volume, setVolume] = useState(.8); const [muted, setMuted] = useState(initiallyMuted); const [speed, setSpeed] = useState(1);
+  const [ready, setReady] = useState(false);
+  const autoAttempted = useRef(false);
+  useEffect(() => setMuted(initiallyMuted), [initiallyMuted]);
+  useEffect(() => {
+    const element = video.current;
+    if (!autoplay || !activationId || !ready || autoAttempted.current || !element) return;
+    autoAttempted.current = true; wantsPlay.current = true;
+    if (Number.isFinite(element.duration) && element.currentTime >= element.duration) element.currentTime = 0;
+    void element.play().catch(() => { wantsPlay.current = false; setPlaying(false); });
+  }, [autoplay, activationId, ready]);
   const loaded = useRef(false), alive = useRef(true), fallbackBusy = useRef(false), wantsPlay = useRef(false);
   const resume = useRef(session.state!.positionSeconds), last = useRef(session.state!.positionSeconds);
   const snapshot = useCallback(() => {
@@ -50,7 +60,7 @@ export function VideoPlayer({ session, activationId, fullscreen, register, onQua
   const fallback = async () => {
     if (fallbackBusy.current || !alive.current) return;
     if (mode === "proxy") { setError("此媒体无法播放。可关闭后重试；原文件未被修改。"); return; }
-    report("waiting"); fallbackBusy.current = true; loaded.current = false; resume.current = last.current; setPreparing(true); setError("");
+    report("waiting"); fallbackBusy.current = true; loaded.current = false; setReady(false); resume.current = last.current; setPreparing(true); setError("");
     const next = mode === "direct" ? "remux" : "proxy";
     try { await viewerApi.prepare(session.token, next); if (alive.current) setMode(next); }
     catch (e) {
@@ -59,8 +69,8 @@ export function VideoPlayer({ session, activationId, fullscreen, register, onQua
     } finally { fallbackBusy.current = false; if (alive.current) setPreparing(false); }
   };
   return <div className="video-player"><div className="viewer-stage video-stage"><video key={`${session.token}-${mode}`} ref={video} src={viewerApi.resourceUrl(session.token, mode)} preload="metadata" crossOrigin="anonymous" playsInline aria-label="视频播放器"
-    onLoadedMetadata={e => { const element = e.currentTarget; if (element !== video.current) return; if (!element.videoWidth) { void fallback(); return; } setError(""); const d = Number.isFinite(element.duration) ? element.duration : 0; setDuration(d); const target = d > 0 ? Math.min(resume.current, d) : resume.current; element.volume = volume; element.muted = muted; element.playbackRate = speed; if (target > 0) element.currentTime = target; else loaded.current = true; setPosition(target); if (wantsPlay.current) void element.play().catch(() => setPlaying(false)); }}
-    onSeeked={e => { loaded.current = true; last.current = e.currentTarget.currentTime; setPosition(last.current); }}
+    onLoadedMetadata={e => { const element = e.currentTarget; if (element !== video.current) return; if (!element.videoWidth) { void fallback(); return; } setError(""); const d = Number.isFinite(element.duration) ? element.duration : 0; setDuration(d); const target = d > 0 ? Math.min(resume.current, d) : resume.current; element.volume = volume; element.muted = muted; element.playbackRate = speed; if (target > 0) element.currentTime = target; else { loaded.current = true; setReady(true); } setPosition(target); if (wantsPlay.current) void element.play().catch(() => setPlaying(false)); }}
+    onSeeked={e => { loaded.current = true; setReady(true); last.current = e.currentTarget.currentTime; setPosition(last.current); }}
     onTimeUpdate={e => { if (loaded.current) { last.current = e.currentTarget.currentTime; setPosition(last.current); } }}
     onPlaying={() => { report("playing"); }} onWaiting={() => { report("waiting"); }} onSeeking={() => { report("seeking"); }} onRateChange={() => { const v=video.current; if(v) report(v.paused?"paused":"playing"); }}
     onPlay={() => { setPlaying(true); wantsPlay.current = true; }} onPause={e => { if (e.currentTarget !== video.current) return; setPlaying(false); if (!fallbackBusy.current) wantsPlay.current = false; report("paused"); checkpoint(); }} onEnded={() => { wantsPlay.current = false; setPlaying(false); report("ended"); checkpoint(); }} onError={() => { void fallback(); }} />

@@ -94,6 +94,16 @@ pub fn run() -> tauri::Result<()> {
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_app_status,
+            commands::create_quick_browse,
+            commands::get_quick_browse,
+            commands::quick_browse_items,
+            commands::select_quick_browse,
+            commands::shuffle_quick_browse,
+            commands::close_quick_browse,
+            commands::get_quick_browse_settings,
+            commands::save_quick_browse_settings,
+            commands::toggle_quick_browse_tag,
+            commands::open_quick_browse_item,
             commands::query_library,
             commands::get_media_details,
             commands::list_library_tags,

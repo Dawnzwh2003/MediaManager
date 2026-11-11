@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-toggle-quick-browse-tag"
+description = "Enables the toggle_quick_browse_tag command without any pre-configured scope."
+commands.allow = ["toggle_quick_browse_tag"]
+
+[[permission]]
+identifier = "deny-toggle-quick-browse-tag"
+description = "Denies the toggle_quick_browse_tag command without any pre-configured scope."
+commands.deny = ["toggle_quick_browse_tag"]

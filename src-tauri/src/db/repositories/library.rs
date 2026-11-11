@@ -82,6 +82,53 @@ fn media(r: &rusqlite::Row<'_>) -> rusqlite::Result<LibraryMedia> {
     })
 }
 impl LibraryRepository<'_> {
+    pub fn validate_filter(&self, filter: &LibraryFilter) -> AppResult<()> {
+        QueryPlan::new(filter)?;
+        if let Some(order) = &filter.random {
+            random_order::initialize(self.connection, Some(order))?;
+        }
+        if matches!(filter.sort, LibrarySort::Random) && filter.random.is_none() {
+            return Err(AppError::Validation("random order needs a seed".into()));
+        }
+        Ok(())
+    }
+    /// Streams only stable IDs and versions from one SQLite read snapshot.
+    pub fn visit_browse_snapshot(
+        &mut self,
+        filter: &LibraryFilter,
+        cancelled: &dyn Fn() -> bool,
+        mut visit: impl FnMut(crate::domain::library::QuickBrowseItem) -> AppResult<()>,
+    ) -> AppResult<(i64, i64)> {
+        let plan = setup_query(self.connection, filter)?;
+        let tx = self.connection.transaction()?;
+        let generation = query_generation(&tx)?;
+        if let Some(order) = filter
+            .random
+            .as_ref()
+            .filter(|_| matches!(filter.sort, LibrarySort::Random))
+        {
+            random_order::populate_while(&tx, order, cancelled)?;
+        }
+        let (sql, values) = plan.snapshot_statement();
+        let mut count = 0;
+        {
+            let mut statement = tx.prepare(&sql)?;
+            let mut rows = statement.query(rusqlite::params_from_iter(values))?;
+            while let Some(row) = rows.next()? {
+                if cancelled() {
+                    return Err(AppError::Validation("snapshot_cancelled".into()));
+                }
+                visit(crate::domain::library::QuickBrowseItem {
+                    ordinal: count,
+                    media_id: row.get(0)?,
+                    content_version_id: row.get(1)?,
+                })?;
+                count += 1;
+            }
+        }
+        tx.commit()?;
+        Ok((count, generation))
+    }
     pub fn query(
         &mut self,
         filter: &LibraryFilter,

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-quick-browse-items"
+description = "Enables the quick_browse_items command without any pre-configured scope."
+commands.allow = ["quick_browse_items"]
+
+[[permission]]
+identifier = "deny-quick-browse-items"
+description = "Denies the quick_browse_items command without any pre-configured scope."
+commands.deny = ["quick_browse_items"]

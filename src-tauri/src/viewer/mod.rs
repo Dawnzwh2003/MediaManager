@@ -125,12 +125,25 @@ impl ViewerService {
         Ok(())
     }
     pub fn open(&self, database: &mut Database, id: &str) -> AppResult<ViewerOpen> {
+        self.open_version(database, id, None)
+    }
+    pub fn open_version(
+        &self,
+        database: &mut Database,
+        id: &str,
+        expected_version: Option<i64>,
+    ) -> AppResult<ViewerOpen> {
         let media = database
             .repositories()
             .media()
             .get(id)?
             .filter(|m| !m.missing)
             .ok_or(AppError::NotFound)?;
+        if expected_version.is_some_and(|version| version != media.content_version_id) {
+            return Err(AppError::MediaUnavailable(
+                "snapshot content version changed".into(),
+            ));
+        }
         let mime = source_mime(&media)?;
         let source = Arc::new(ResourceFile::open(
             Path::new(&media.file_path),

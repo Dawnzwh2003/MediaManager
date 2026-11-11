@@ -64,6 +64,14 @@ Phase 1 只建立基础设施，原生验证仍受环境限制。用户本轮已
 - Random 使用稳定 seed 和版本。分页、刷新、重新渲染和重新选择 Random 均复用当前 seed。用户点 Shuffle Again 时生成并保存新 seed。
 - SQLite 执行查询和排序。前端按游标获取有界页面并虚拟渲染。验证 100,000 项媒体的普通和随机分页、组合筛选及索引使用情况。
 
+## Phase 9 Quick Browse 范围
+
+- 从当前 search/filter/sort 建立持久化浏览会话，保存 ID、started_at、ended_at、排序、完整 filter snapshot、random seed 和算法版本。会话内固定成员和 ordinal，点赞、标签编辑、扫描、分页及重渲染不重新查询成员；内容失效项保留位置并允许继续浏览。
+- Left 上一项，Right/Space 下一项，L 调统一 Like Service，T 切换标签选择器，F 全屏，I 切换信息，R/Shuffle Again 生成新 seed 并建立新会话，Esc 退出。输入框编辑和快捷键设置内不触发媒体快捷键；键盘自动重复不重复执行动作。
+- 数字 1–9 可绑定平级 Custom Tag，按键执行事务化 Toggle，并显示短暂的添加/移除反馈。同一次请求重试不能反向切换第二次；标签始终仅修改数据库关联。
+- Quick Browse 的 View source 为 quick_browser，遵守 activation 语义；Like、独立播放进度、有效 Play 判断均复用既有服务。视频可配置 autoplay 和默认 mute，默认不自动播放、默认静音。
+- 后台构建、可取消、失败可恢复；SQLite 负责筛选排序，前端只获取当前成员和当前原件。完成测试后停止，不新增历史会话恢复页面或会话保留期策略。
+
 ## 长期核心原则（已批准）
 
 | ID | 约束 |

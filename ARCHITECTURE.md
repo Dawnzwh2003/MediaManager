@@ -397,6 +397,16 @@ DTO 版本化，TypeScript strict，Rust 最终校验。ID/计数/sequence 用�
 - Random v1 的域为 `MediaManager/random/v1`。对域、由 32 个十六进制字符组成的 seed 和 media ID 的 UTF-8 字节分别加 u64 大端长度前缀，再做 SHA-256。SQLite 按摘要十六进制文本与 ID 升序。桌面保留一个专用查询连接和一份磁盘临时排序索引，首次访问构建，后续页面按索引 seek。新增 ID 按 created_seq 增量补齐。切换 seed 替换临时排序数据。构建在阻塞工作线程的读快照内进行，临时 SQLite 页缓存设置为 4 MiB。
 - 初始 seed 是固定的 v1 值。Shuffle Again 生成新 seed 并存入 WebView 本地设置。筛选、刷新、分页、切换排序及重开应用复用此设置。当前目录是实时查询，新增媒体按其哈希键加入，已有媒体的相对随机顺序保持稳定。
 
+## Phase 9 Quick Browse 实现
+
+- v9 追加迁移，不改 v1–v8。为既有 quick_browse_sessions 增加 started_at/ended_at、query_sort、视频选项、构建 checkpoint/取消/错误与父会话引用；旧行按 created_at 和原排序族回填。保留旧 sort_mode 的 imported/random 约束兼容既有 Repository，query_sort 保存完整 Phase 8 排序枚举，filter_json 保存实际查询。已发布成员、版本和顺序继续不可变。
+- QuickBrowseService 创建持久化请求，统一短事务写门协调 BrowseStore；LibraryRepository 复用 QueryPlan 执行完整筛选和排序，只逐行返回 ID/版本。独立后台 worker 同时最多一个构建。单次源读快照默认最多 120 秒，50 ms watchdog 可中断 SQLite 查询；浏览时不保留源读事务。取消、超时、配额、缓存失败及中断均进入有界清理，重启恢复未完成构建。
+- 只在应用 cache/browse/<hash(session ID)>.sqlite3 创建磁盘 spool，默认 512 MiB 上限、4 MiB 页缓存；随机临时索引沿用 Phase 8 的磁盘/4 MiB 缓存策略。释放源快照后，每批最多 1,000 项写入 building 会话，checkpoint 与批次同事务，最后验证 ordinal/count 并短事务发布 ready。失败项按最多 1,000 行清理，spool 成功或失败均回收；拒绝链接/重解析目录。已发布会话保留元数据和成员，不自动删除历史；保留期/恢复页面仍未实施。
+- 浏览 API 按 (session_id,ordinal) 主键 seek，最多 200 个轻量成员；产品每次仅获取当前一项，打开一个原件，不在前端排序或保存全库对象。missing、版本变更或损坏原件保留固定位置，可跳过；open_quick_browse_item 校验当前 ordinal 和冻结版本后复用只读 ViewerService。
+- 父 QuickBrowseShell 持有会话 ActivationController，真正切换主项后 ViewerShell 复用资源授权/activate_media，source=quick_browser。数字键、Details、缩放、设置和全屏不创建新 activation；A→B→A 递增 activation ordinal。LikeButton/L 继续调用 Phase 7 add_like；视频复用兼容回退、播放资格和独立进度，不另建 Event 逻辑。关闭时先 flush，再释放资源，最后结束浏览会话，避免父子重复写已释放的 owner。
+- app_settings 的 quick_browse.v1 保存 autoplay、mute 和最多九个数字→Custom Tag ID 绑定；标签名查询时解析。TagService 决定 Toggle，QuickTagStore 在一个事务校验当前稳定成员、改变关联并保存 quick_tag_operations 回执；重试同 request ID 返回原结果，冲突拒绝。回执保留当时名称/结果，不因标签删除而删除媒体或改动文件。
+- R 建立带新 seed/父会话引用的新构建请求；原会话在新列表完成前不结束。新列表发布与旧会话 ended_at 同事务，失败则保留原列表，成功后前端切换。取消和 Esc 不生成新 seed。普通重渲染或后台更新不重排已发布列表。
+
 ## 技术依据
 
 - [Tauri Capabilities](https://tauri.app/security/capabilities/) 与 [Command Scopes](https://tauri.app/security/scope/)：权限配置及命令内部校验。

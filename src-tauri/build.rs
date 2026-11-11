@@ -3,6 +3,16 @@ fn main() {
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
         tauri_build::AppManifest::new().commands(&[
             "get_app_status",
+            "create_quick_browse",
+            "get_quick_browse",
+            "quick_browse_items",
+            "select_quick_browse",
+            "shuffle_quick_browse",
+            "close_quick_browse",
+            "get_quick_browse_settings",
+            "save_quick_browse_settings",
+            "toggle_quick_browse_tag",
+            "open_quick_browse_item",
             "query_library",
             "get_media_details",
             "list_library_tags",

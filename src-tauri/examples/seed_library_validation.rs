@@ -5,10 +5,10 @@ use std::{fs, path::Path, sync::atomic::AtomicBool};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-    let fixture = if std::env::args().nth(1).as_deref() == Some("--phase8") {
-        "phase8"
-    } else {
-        "phase5-native"
+    let fixture = match std::env::args().nth(1).as_deref() {
+        Some("--phase9") => "phase9",
+        Some("--phase8") => "phase8",
+        _ => "phase5-native",
     };
     let root = workspace.join(".tools/validation").join(fixture);
     let runtime = root.join("runtime");

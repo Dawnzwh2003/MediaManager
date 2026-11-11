@@ -29,6 +29,15 @@ pub struct Database {
 }
 
 impl Database {
+    pub(crate) fn connection_interrupt(&self) -> rusqlite::InterruptHandle {
+        self.connection.get_interrupt_handle()
+    }
+    pub(crate) fn quick_tag_store(&mut self) -> repositories::quick_tags::QuickTagStore<'_> {
+        repositories::quick_tags::QuickTagStore(&mut self.connection)
+    }
+    pub(crate) fn browse_store(&mut self) -> repositories::browse::BrowseStore<'_> {
+        repositories::browse::BrowseStore(&mut self.connection)
+    }
     pub(crate) fn statistics_store(&mut self) -> repositories::statistics::StatisticsStore<'_> {
         repositories::statistics::StatisticsStore(&mut self.connection)
     }
