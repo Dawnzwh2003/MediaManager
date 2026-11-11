@@ -20,6 +20,7 @@ export function ViewerShell({ initialId, filter, close, revision, changed }: { i
   const activations = useRef(new ActivationController(crypto.randomUUID()));
   const activeId = useRef<string|null>(null);
   const ownOrderingChange = useRef(false);
+  const navigationAnchor = useRef<string | null>(null);
   const [activationId,setActivationId] = useState<string|null>(null);
   const [likes,setLikes] = useState(0);
   const filterAtOpen = useRef({ ...filter });
@@ -33,9 +34,20 @@ export function ViewerShell({ initialId, filter, close, revision, changed }: { i
   const register = useCallback((value: PlayerControl | null) => { control.current = value; }, []);
   useEffect(() => { const previous = document.activeElement; element.current?.focus(); return () => { if (previous instanceof HTMLElement) previous.focus(); }; }, []);
   const flush = useCallback(async () => { await control.current?.stopAndFlush(); if(activeId.current) await activityApi.close(activeId.current); }, []);
-  const refreshNavigation = useCallback(async () => { try { setNavigation(await viewerApi.navigation(filterAtOpen.current, id, null)); } catch (e) { setError(toApiError(e).message); } }, [id]);
+  const refreshNavigation = useCallback(async () => {
+    const token = sessionRef.current?.token;
+    if (!token) return;
+    try {
+      const fresh = await viewerApi.navigation(filterAtOpen.current, id, null, navigationAnchor.current);
+      if (sessionRef.current?.token === token) setNavigation(fresh);
+    } catch (failure) {
+      if (sessionRef.current?.token === token) setError(toApiError(failure).message);
+    }
+  }, [id]);
   useEffect(() => {
     let active = true; let opened: ViewerOpen | null = null;
+    navigationAnchor.current = null;
+    ownOrderingChange.current = false;
     setLoading(true); setActivationId(null); setSession(null); sessionRef.current = null; setNavigation(null); setError("");
     const timer = setTimeout(() => {
       void (async () => {
@@ -45,6 +57,10 @@ export function ViewerShell({ initialId, filter, close, revision, changed }: { i
           setName(details.media.fileName); setLikes(details.media.likeCount); opened = await openViewer(id);
           if (!active) { await viewerApi.close(opened.token); return; }
           sessionRef.current = opened; setSession(opened); setLoading(false);
+          // The current item's View can change its rank or remove it from Unviewed.
+          const entry = await viewerApi.navigation(filterAtOpen.current, id, null);
+          if (!active) return;
+          navigationAnchor.current = entry.key;
           await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
           if (!active) return;
           const activation = activations.current.activate(id,opened.contentVersionId,filterAtOpen.current.search ? "search" : id === initialId ? "grid" : "normal_viewer");
@@ -58,7 +74,15 @@ export function ViewerShell({ initialId, filter, close, revision, changed }: { i
     }, 0);
     return () => { active = false; clearTimeout(timer); if (opened) { const token = opened.token; void viewerApi.close(token).catch(() => {}); } };
   }, [id, retry, refreshNavigation]);
-  useEffect(() => {const update=()=>{ownOrderingChange.current=true;setNavigation(null);void refreshNavigation();};window.addEventListener("like-recorded",update);return()=>window.removeEventListener("like-recorded",update)},[refreshNavigation]);
+  const refreshAfterActivity = useCallback(() => {
+    ownOrderingChange.current = true;
+    setNavigation(null);
+    void refreshNavigation();
+  }, [refreshNavigation]);
+  useEffect(() => {
+    window.addEventListener("like-recorded", refreshAfterActivity);
+    return () => window.removeEventListener("like-recorded", refreshAfterActivity);
+  }, [refreshAfterActivity]);
   const lastRevision = useRef(revision);
   useEffect(() => { if (lastRevision.current !== revision) { lastRevision.current = revision; void refreshNavigation(); } }, [revision, refreshNavigation]);
   useEffect(() => {
@@ -74,7 +98,7 @@ export function ViewerShell({ initialId, filter, close, revision, changed }: { i
   const navigate = useCallback(async (direction: "previousId" | "nextId") => {
     if (!navigation || busy || loading) return;
     setBusy(true); setError("");
-    try { const fresh = await viewerApi.navigation(filterAtOpen.current, id, ownOrderingChange.current ? null : navigation.generation); ownOrderingChange.current=false; const target = fresh[direction]; if (target) { await flush(); setId(target); } }
+    try { const fresh = await viewerApi.navigation(filterAtOpen.current, id, ownOrderingChange.current ? null : navigation.generation, navigationAnchor.current); ownOrderingChange.current=false; const target = fresh[direction]; if (target) { await flush(); setId(target); } }
     catch (e) { setError(toApiError(e).message); } finally { setBusy(false); }
   }, [navigation, busy, loading, id, flush]);
   const fullscreen = useCallback(() => { const work = document.fullscreenElement ? document.exitFullscreen() : element.current?.requestFullscreen(); void work?.catch(() => setError("无法进入全屏，请重试。")); }, []);
@@ -93,7 +117,7 @@ export function ViewerShell({ initialId, filter, close, revision, changed }: { i
   return <div className="viewer-overlay" role="dialog" aria-modal="true" aria-label="媒体查看器" ref={element} tabIndex={-1}>
     <header className="viewer-header"><button className="viewer-back" onClick={() => { void leave(); }} disabled={busy}>← 返回媒体库</button><div className="viewer-title truncate" title={name}>{name || "正在打开媒体…"}</div><div className="viewer-header-actions"><LikeButton key={id} mediaId={id} initialCount={likes} /><button aria-pressed={pane === "tags"} onClick={() => setPane(pane === "tags" ? null : "tags")}>Custom Tag</button><button aria-pressed={pane === "details"} onClick={() => setPane(pane === "details" ? null : "details")}>Details</button></div></header>
     {error && <div className="viewer-notice" role="alert">{error}<button onClick={() => { setError(""); if (!session || !activationId) setRetry(retry + 1); else void refreshNavigation(); }}>重试 / 更新导航</button><button onClick={() => { void leave(true); }}>仍然关闭</button></div>}
-    <div className="viewer-body"><div className="viewer-content">{loading ? <div className="viewer-loading" role="status"><span className="loading-ring" />正在打开只读媒体…</div> : session ? session.mediaType === "image" ? <ImageViewer key={session.token} session={session} fullscreen={fullscreen} /> : <VideoPlayer key={session.token} activationId={activationId} session={session} fullscreen={fullscreen} register={register} /> : <div className="viewer-loading">媒体无法打开，请重试或返回媒体库。</div>}
+    <div className="viewer-body"><div className="viewer-content">{loading ? <div className="viewer-loading" role="status"><span className="loading-ring" />正在打开只读媒体…</div> : session ? session.mediaType === "image" ? <ImageViewer key={session.token} session={session} fullscreen={fullscreen} /> : <VideoPlayer key={session.token} activationId={activationId} session={session} fullscreen={fullscreen} register={register} onQualified={refreshAfterActivity} /> : <div className="viewer-loading">媒体无法打开，请重试或返回媒体库。</div>}
       <nav className="viewer-navigation" aria-label="媒体切换"><button aria-label="上一个媒体" disabled={busy || loading || !navigation?.previousId} onClick={() => { void navigate("previousId"); }}>← Previous</button><span>{session?.mediaType === "video" ? "VIDEO" : "IMAGE"} · 原件只读</span><button aria-label="下一个媒体" disabled={busy || loading || !navigation?.nextId} onClick={() => { void navigate("nextId"); }}>Next →</button></nav>
     </div>{pane && <div className="viewer-panel">{pane === "details" ? <DetailsPanel id={id} close={() => setPane(null)} revision={revision} changed={changed} /> : <section className="viewer-tags"><div className="panel-heading"><h2>Custom Tags</h2><button className="icon-button" aria-label="关闭标签面板" onClick={() => setPane(null)}>×</button></div><TagSelector mediaIds={[id]} revision={revision} changed={changed} /></section>}</div>}</div>
   </div>;

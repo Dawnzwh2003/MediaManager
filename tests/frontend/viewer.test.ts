@@ -42,7 +42,7 @@ test("fit, 100%, pointer anchored zoom and pan have finite bounds", () => {
 });
 test("viewer IPC guards reject invalid versions, ownership and state payloads", () => {
   const valid = { token: "a".repeat(32), mediaId: "m", contentVersionId: 1, mediaType: "video", mime: "video/mp4", state: initial };
-  assert.equal(parseViewerOpen(valid).mediaType, "video"); assert.equal(parseNavigation({ previousId: null, nextId: "n", generation: 0 }).nextId, "n");
+  assert.equal(parseViewerOpen(valid).mediaType, "video"); assert.equal(parseNavigation({ previousId: null, nextId: "n", generation: 0, key: "0" }).nextId, "n");
   for (const value of [{ ...valid, token: "../../private" }, { ...valid, contentVersionId: 0 }, { ...valid, state: null }, { ...valid, mediaType: "image" }]) assert.throws(() => parseViewerOpen(value));
   for (const state of [{ ...initial, positionSeconds: NaN }, { ...initial, stateVersion: 0 }, { ...initial, durationSeconds: -1 }]) assert.throws(() => parsePlaybackState(state));
 });

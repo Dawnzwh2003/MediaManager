@@ -7,10 +7,18 @@ import {activityApi} from "../api/activity.ts";
 import type {PlaybackPhase} from "../api/activity.ts";
 import {PlaybackReporter} from "./activity-model.ts";
 export interface PlayerControl { stopAndFlush: () => Promise<void> }
-export function VideoPlayer({ session, activationId, fullscreen, register }: { activationId:string|null; session: ViewerOpen; fullscreen: () => void; register: (control: PlayerControl | null) => void }) {
+export function VideoPlayer({ session, activationId, fullscreen, register, onQualified }: { activationId:string|null; session: ViewerOpen; fullscreen: () => void; register: (control: PlayerControl | null) => void; onQualified: () => void }) {
   const video = useRef<HTMLVideoElement>(null);
   const saver = useMemo(() => new ProgressSaver(session.token, session.state!, request => viewerApi.save(request)), [session]);
-  const reporter=useMemo(()=>activationId?new PlaybackReporter(activationId,activityApi.report):null,[activationId]);
+  const announcedQualification = useRef(false);
+  const reporter = useMemo(() => activationId ? new PlaybackReporter(activationId, async evidence => {
+    const result = await activityApi.report(evidence);
+    if (result.qualified && !announcedQualification.current) {
+      announcedQualification.current = true;
+      onQualified();
+    }
+    return result;
+  }) : null, [activationId, onQualified]);
   const [activityError,setActivityError]=useState("");
   const emit=useCallback((phase:PlaybackPhase)=>{const v=video.current;if(!reporter||!v||(!loaded.current && phase!=="waiting"))return Promise.resolve();return reporter.report(phase,v.currentTime,Number.isFinite(v.duration)&&v.duration>0?v.duration:null,v.playbackRate);},[reporter]);
   const report=useCallback((phase:PlaybackPhase)=>{void emit(phase).catch(e=>{setActivityError(toApiError(e).message);video.current?.pause();});},[emit]);

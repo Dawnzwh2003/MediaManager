@@ -3,8 +3,59 @@ use crate::{
     domain::library_query::*,
     error::{AppError, AppResult},
 };
-use rusqlite::{params, types::Value, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension};
 use sha2::{Digest, Sha256};
+
+use super::{
+    catalog_query::{row_key, QueryPlan},
+    random_order,
+};
+
+fn setup_query(connection: &Connection, filter: &LibraryFilter) -> AppResult<QueryPlan> {
+    let plan = QueryPlan::new(filter)?;
+    if matches!(filter.sort, LibrarySort::Random) {
+        random_order::initialize(connection, filter.random.as_ref())?;
+    }
+    Ok(plan)
+}
+
+fn prepare_order(tx: &rusqlite::Transaction<'_>, filter: &LibraryFilter) -> AppResult<()> {
+    if matches!(filter.sort, LibrarySort::Random) {
+        let order = filter.random.as_ref().ok_or(AppError::Internal)?;
+        random_order::populate(tx, order)?;
+    }
+    Ok(())
+}
+
+fn query_signature(filter: &LibraryFilter) -> AppResult<String> {
+    let mut digest = Sha256::new();
+    digest.update(b"MediaManager/library-query/v8");
+    digest.update(serde_json::to_vec(filter)?);
+    Ok(format!("{:x}", digest.finalize()))
+}
+
+fn query_generation(tx: &rusqlite::Transaction<'_>) -> AppResult<i64> {
+    Ok(tx.query_row(
+        "SELECT value FROM library_generation WHERE id=1",
+        [],
+        |row| row.get(0),
+    )?)
+}
+
+fn read_rows(
+    tx: &rusqlite::Transaction<'_>,
+    plan: &QueryPlan,
+    cursor: Option<&LibraryCursor>,
+    limit: u32,
+    reverse: bool,
+) -> AppResult<Vec<(LibraryMedia, String)>> {
+    let (sql, values) = plan.statement(FIELDS, cursor, limit, reverse)?;
+    let mut statement = tx.prepare(&sql)?;
+    let rows = statement.query_map(rusqlite::params_from_iter(values), |row| {
+        Ok((media(row)?, row_key(row)?))
+    })?;
+    Ok(rows.collect::<Result<_, _>>()?)
+}
 
 pub struct LibraryRepository<'a> {
     pub(crate) connection: &'a mut Connection,
@@ -37,118 +88,33 @@ impl LibraryRepository<'_> {
         cursor: Option<&LibraryCursor>,
         limit: u32,
     ) -> AppResult<LibraryPage> {
-        self.query_direction(filter, cursor, limit, false)
-    }
-    fn query_direction(
-        &mut self,
-        filter: &LibraryFilter,
-        cursor: Option<&LibraryCursor>,
-        limit: u32,
-        reverse: bool,
-    ) -> AppResult<LibraryPage> {
         let limit = super::page_size(limit)?;
-        if filter.search.chars().count() > 200
-            || filter
-                .media_type
-                .as_deref()
-                .is_some_and(|s| s != "image" && s != "video")
-        {
-            return Err(AppError::Validation("invalid library filter".into()));
-        }
-        let signature = format!("{:x}", Sha256::digest(serde_json::to_vec(filter)?));
+        let plan = setup_query(self.connection, filter)?;
+        let signature = query_signature(filter)?;
         let tx = self.connection.transaction()?;
-        let generation =
-            tx.query_row("SELECT value FROM library_generation WHERE id=1", [], |r| {
-                r.get::<_, i64>(0)
-            })?;
-        if cursor.is_some_and(|c| c.generation != generation || c.signature != signature) {
+        let generation = query_generation(&tx)?;
+        if cursor
+            .is_some_and(|cursor| cursor.generation != generation || cursor.signature != signature)
+        {
             return Err(AppError::StaleCursor);
         }
-        let (column, index, direction, op, last) = match filter.sort {
-            LibrarySort::Recent => (
-                "imported_at",
-                "media_library_recent",
-                "DESC",
-                "<",
-                cursor.map(|c| Value::Integer(c.imported_at)),
-            ),
-            LibrarySort::Name => (
-                "file_name",
-                "media_library_name",
-                "ASC",
-                ">",
-                cursor.map(|c| Value::Text(c.file_name.clone())),
-            ),
-            LibrarySort::Likes => (
-                "like_count",
-                "media_library_likes",
-                "DESC",
-                "<",
-                cursor.map(|c| Value::Integer(c.like_count)),
-            ),
-        };
-        let seek = if cursor.is_some() {
-            let op = if reverse {
-                if op == "<" {
-                    ">"
-                } else {
-                    "<"
-                }
-            } else {
-                op
-            };
-            format!("AND (m.{column},m.id){op}(?5,?6)")
-        } else {
-            String::new()
-        };
-        let direction = if reverse {
-            if direction == "ASC" {
-                "DESC"
-            } else {
-                "ASC"
-            }
-        } else {
-            direction
-        };
-        let sql=format!("WITH RECURSIVE subtree(id) AS (SELECT id FROM system_tags WHERE id=?3 UNION SELECT t.id FROM system_tags t JOIN subtree s ON t.parent_id=s.id)
-            SELECT {FIELDS} FROM media m INDEXED BY {index} WHERE m.state='active'
-            AND (?1='' OR instr(lower(m.file_name),lower(?1))>0)
-            AND (?2 IS NULL OR m.media_type=?2)
-            AND (?3 IS NULL OR EXISTS(SELECT 1 FROM media_system_tags mt JOIN subtree s ON s.id=mt.tag_id WHERE mt.media_id=m.id))
-            AND (?4 IS NULL OR EXISTS(SELECT 1 FROM media_custom_tags mt WHERE mt.media_id=m.id AND mt.tag_id=?4))
-            {seek} ORDER BY m.{column} {direction},m.id {direction} LIMIT ?7");
-        let mut items = tx
-            .prepare(&sql)?
-            .query_map(
-                params![
-                    filter.search,
-                    filter.media_type,
-                    filter.system_tag_id,
-                    filter.custom_tag_id,
-                    last.unwrap_or(Value::Null),
-                    cursor.map(|c| &c.id),
-                    limit + 1
-                ],
-                media,
-            )?
-            .collect::<Result<Vec<_>, _>>()?;
-        let has_more = items.len() > limit as usize;
-        items.truncate(limit as usize);
+        prepare_order(&tx, filter)?;
+        let mut rows = read_rows(&tx, &plan, cursor, limit + 1, false)?;
+        let has_more = rows.len() > limit as usize;
+        rows.truncate(limit as usize);
         let next_cursor = if has_more {
-            items.last().map(|m| LibraryCursor {
+            rows.last().map(|(media, key)| LibraryCursor {
                 generation,
                 signature,
-                id: m.id.clone(),
-                imported_at: m.imported_at,
-                file_name: m.file_name.clone(),
-                like_count: m.like_count,
+                id: media.id.clone(),
+                key: key.clone(),
             })
         } else {
             None
         };
         tx.commit()?;
         Ok(LibraryPage {
-            items,
+            items: rows.into_iter().map(|(media, _)| media).collect(),
             next_cursor,
             generation,
         })
@@ -172,38 +138,30 @@ impl LibraryRepository<'_> {
         filter: &LibraryFilter,
         id: &str,
         generation: Option<i64>,
+        anchor: Option<&str>,
     ) -> AppResult<crate::domain::viewer::ViewerNavigation> {
-        let m = self.details(id)?.media;
-        let current: i64 = self.connection.query_row(
-            "SELECT value FROM library_generation WHERE id=1",
-            [],
-            |r| r.get(0),
-        )?;
-        if generation.is_some_and(|g| g != current) {
+        let plan = setup_query(self.connection, filter)?;
+        let tx = self.connection.transaction()?;
+        let current = query_generation(&tx)?;
+        if generation.is_some_and(|value| value != current) {
             return Err(AppError::StaleCursor);
         }
+        prepare_order(&tx, filter)?;
+        let current_key = plan.anchor_key(&tx, id)?;
         let cursor = LibraryCursor {
             generation: current,
-            signature: format!("{:x}", Sha256::digest(serde_json::to_vec(filter)?)),
-            id: m.id,
-            imported_at: m.imported_at,
-            file_name: m.file_name,
-            like_count: m.like_count,
+            signature: query_signature(filter)?,
+            id: id.into(),
+            key: anchor.map(str::to_owned).unwrap_or(current_key),
         };
-        let previous = self
-            .query_direction(filter, Some(&cursor), 1, true)?
-            .items
-            .first()
-            .map(|m| m.id.clone());
-        let next = self
-            .query_direction(filter, Some(&cursor), 1, false)?
-            .items
-            .first()
-            .map(|m| m.id.clone());
+        let previous = read_rows(&tx, &plan, Some(&cursor), 1, true)?;
+        let next = read_rows(&tx, &plan, Some(&cursor), 1, false)?;
+        tx.commit()?;
         Ok(crate::domain::viewer::ViewerNavigation {
-            previous_id: previous,
-            next_id: next,
+            previous_id: previous.into_iter().next().map(|(media, _)| media.id),
+            next_id: next.into_iter().next().map(|(media, _)| media.id),
             generation: current,
+            key: cursor.key,
         })
     }
     pub fn tags(&self, q: &TagQuery) -> AppResult<TagPage> {

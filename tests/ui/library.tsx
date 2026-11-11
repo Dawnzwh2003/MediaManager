@@ -27,11 +27,13 @@ const fixtureInvoke = async (command: string, args: Record<string, unknown>): Pr
       const m = item(i); if (filter.mediaType && m.mediaType !== filter.mediaType) continue;
       if (filter.search && !m.fileName.toLowerCase().includes(filter.search.toLowerCase())) continue;
       if (filter.systemTagId === "leaf" && i > 24999) continue;
-      if (filter.customTagId && !m.customTags.some(t => t.id === filter.customTagId)) continue;
+      const wanted = [...filter.customTagIds, ...(filter.customTagId ? [filter.customTagId] : [])];
+      const matches = (id: string) => m.customTags.some(tag => tag.id === id);
+      if (wanted.length && !(filter.customTagMode === "and" ? wanted.every(matches) : wanted.some(matches))) continue;
       items.push(m);
     }
     const more = items.length > limit; items.length = Math.min(items.length, limit); const last = items.at(-1);
-    return { items, generation, nextCursor: more && last ? { generation, signature: "fixture", id: last.id, importedAt: last.importedAt, fileName: last.fileName, likeCount: last.likeCount } : null };
+    return { items, generation, nextCursor: more && last ? { generation, signature: "fixture", id: last.id, key: String(last.importedAt) } : null };
   }
   if (command === "list_library_tags") {
     const q = args.query as TagQuery;

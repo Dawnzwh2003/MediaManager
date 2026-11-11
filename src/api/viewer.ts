@@ -6,7 +6,7 @@ export interface PlaybackState { positionSeconds: number; durationSeconds: numbe
 export interface ViewerOpen { token: string; mediaId: string; contentVersionId: number; mediaType: "image" | "video"; mime: string; state: PlaybackState | null }
 export type PlaybackMode = "direct" | "remux" | "proxy";
 export interface ProgressWrite { token: string; sequence: number; expectedVersion: number; positionSeconds: number; durationSeconds: number | null }
-export interface ViewerNavigation { previousId: string | null; nextId: string | null; generation: number }
+export interface ViewerNavigation { previousId: string | null; nextId: string | null; generation: number; key: string }
 const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object";
 const number = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0;
 const id = (v: unknown) => v === null || typeof v === "string";
@@ -22,7 +22,7 @@ export function parseViewerOpen(v: unknown): ViewerOpen {
   return v as unknown as ViewerOpen;
 }
 export function parseNavigation(v: unknown): ViewerNavigation {
-  if (!record(v) || !id(v.previousId) || !id(v.nextId) || !Number.isSafeInteger(v.generation) || Number(v.generation) < 0) invalid();
+  if (!record(v) || !id(v.previousId) || !id(v.nextId) || !Number.isSafeInteger(v.generation) || Number(v.generation) < 0 || typeof v.key !== "string") invalid();
   return v as unknown as ViewerNavigation;
 }
 async function call(command: string, args: Record<string, unknown>): Promise<unknown> {
@@ -34,7 +34,8 @@ export const viewerApi = {
   close: async (token: string) => { await call("close_viewer", { token }); },
   save: async (request: ProgressWrite) => parsePlaybackState(await call("save_playback_state", { request })),
   prepare: async (token: string, mode: PlaybackMode) => { await call("prepare_playback", { token, mode }); },
-  navigation: async (filter: LibraryFilter, id: string, generation: number | null) => parseNavigation(await call("viewer_navigation", { filter, id, generation })),
+  navigation: async (filter: LibraryFilter, id: string, generation: number | null, anchor: string | null = null) =>
+    parseNavigation(await call("viewer_navigation", { filter, id, generation, anchor })),
   resourceUrl: (token: string, mode: PlaybackMode) => `${convertFileSrc(token, "media")}/${mode}`,
   getState: async (id: string, contentVersionId: number): Promise<PlaybackState | null> => { const state = await call("get_playback_state", { id, contentVersionId }); return state === null ? null : parsePlaybackState(state); },
   onApplicationClose: async (flush: () => Promise<void>): Promise<() => void> => {

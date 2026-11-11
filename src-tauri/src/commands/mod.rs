@@ -41,11 +41,15 @@ pub async fn query_library(
     cursor: Option<LibraryCursor>,
     limit: u32,
 ) -> AppResult<LibraryPage> {
-    library_call(Arc::clone(state.inner()), move |db| {
-        db.repositories()
-            .library()
-            .query(&filter, cursor.as_ref(), limit)
-    })
+    catalog_call(
+        Arc::clone(state.inner()),
+        matches!(filter.sort, LibrarySort::Random),
+        move |db| {
+            db.repositories()
+                .library()
+                .query(&filter, cursor.as_ref(), limit)
+        },
+    )
     .await
 }
 #[tauri::command]
@@ -155,13 +159,27 @@ pub async fn viewer_navigation(
     filter: LibraryFilter,
     id: String,
     generation: Option<i64>,
+    anchor: Option<String>,
 ) -> AppResult<ViewerNavigation> {
-    library_call(Arc::clone(state.inner()), move |db| {
-        db.repositories()
-            .library()
-            .navigation(&filter, &id, generation)
-    })
+    catalog_call(
+        Arc::clone(state.inner()),
+        matches!(filter.sort, LibrarySort::Random),
+        move |db| {
+            db.repositories()
+                .library()
+                .navigation(&filter, &id, generation, anchor.as_deref())
+        },
+    )
     .await
+}
+async fn catalog_call<T: Send + 'static>(
+    state: Arc<AppState>,
+    random: bool,
+    work: impl FnOnce(&mut crate::db::Database) -> AppResult<T> + Send + 'static,
+) -> AppResult<T> {
+    tauri::async_runtime::spawn_blocking(move || state.catalog(random, work))
+        .await
+        .map_err(|_| AppError::Internal)?
 }
 use crate::domain::activity::{
     Activation, ActivityResult, PlayResult, PlaybackEvidence, StatisticsJob,

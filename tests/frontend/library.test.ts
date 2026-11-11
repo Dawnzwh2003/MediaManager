@@ -5,7 +5,7 @@ import type { LibraryPage, LibraryCursor, LibraryFilter } from "../../src/api/li
 import { LibraryController, MAX_SELECTION, PAGE_SIZE, ROW_HEIGHT, toggleSelection, virtualRows } from "../../src/library/model.ts";
 
 const item = { id: "m", fileName: "file.png", mediaType: "image" as const, importedAt: 1, likeCount: 2, width: 100, height: 90, duration: null, customTags: [{ id: "t", name: "Tag" }], customTagCount: 1 };
-const cursor: LibraryCursor = { generation: 1, signature: "sig", id: "m", importedAt: 1, fileName: "file.png", likeCount: 2 };
+const cursor: LibraryCursor = { generation: 1, signature: "sig", id: "m", key: "1" };
 const page = (name = "m", next: LibraryCursor | null = null): LibraryPage => ({ items: [{ ...item, id: name }], nextCursor: next, generation: 1 });
 test("library contracts reject malformed, oversized and unsafe thumbnail responses", () => {
   assert.equal(parseLibraryPage(page()).items[0]?.likeCount, 2);
@@ -52,4 +52,29 @@ test("stale cursor and storage errors remain explicit and recover with a fresh q
   const controller = new LibraryController(async () => { if (failure) throw { code: "stale_cursor", message: "请刷新", retryable: true }; return page("recovered"); });
   await controller.refresh(); assert.equal(controller.getSnapshot().error?.code, "stale_cursor"); assert.deepEqual(controller.getSnapshot().items, []);
   failure = false; await controller.refresh(); assert.equal(controller.getSnapshot().error, null); assert.equal(controller.getSnapshot().items[0]?.id, "recovered");
+});
+
+test("only Shuffle Again replaces the seed, which survives page, filter and reload changes", async () => {
+  let persisted: string | null = null;
+  let writes = 0;
+  const storage = { getItem: () => persisted, setItem: (_key: string, seed: string) => { persisted = seed; writes++; } };
+  const controller = new LibraryController(async (_filter, at) => at ? page("second") : page("first", cursor), storage);
+  await controller.change({ ...initialFilter, sort: "random" });
+  const initialSeed = controller.getSnapshot().filter.random.seed;
+  await controller.next();
+  await controller.previous();
+  await controller.refresh();
+  await controller.change({ ...initialFilter, sort: "random", search: "clip" });
+  assert.equal(controller.getSnapshot().filter.random.seed, initialSeed);
+  assert.equal(writes, 0);
+  await controller.shuffle();
+  const shuffled = controller.getSnapshot().filter.random.seed;
+  assert.match(shuffled, /^[a-f0-9]{32}$/);
+  assert.notEqual(shuffled, initialSeed);
+  await controller.change({ ...initialFilter, sort: "name" });
+  await controller.change({ ...initialFilter, sort: "random" });
+  assert.equal(controller.getSnapshot().filter.random.seed, shuffled);
+  assert.equal(writes, 1);
+  const reloaded = new LibraryController(async () => page(), storage);
+  assert.deepEqual(reloaded.getSnapshot().filter.random, { seed: shuffled, version: 1 });
 });

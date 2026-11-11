@@ -265,14 +265,14 @@ fn navigation_uses_filter_order_across_pages_and_reports_stale_generations() {
     let nav = db
         .repositories()
         .library()
-        .navigation(&f, &image, None)
+        .navigation(&f, &image, None, None)
         .unwrap();
     assert_eq!(nav.next_id, Some(video.clone()));
     assert!(nav.previous_id.is_none());
     let back = db
         .repositories()
         .library()
-        .navigation(&f, &video, Some(nav.generation))
+        .navigation(&f, &video, Some(nav.generation), None)
         .unwrap();
     assert_eq!(back.previous_id, Some(image));
     db.repositories()
@@ -282,7 +282,7 @@ fn navigation_uses_filter_order_across_pages_and_reports_stale_generations() {
     assert!(matches!(
         db.repositories()
             .library()
-            .navigation(&f, &video, Some(nav.generation)),
+            .navigation(&f, &video, Some(nav.generation), None),
         Err(AppError::StaleCursor)
     ));
 }

@@ -47,4 +47,5 @@ pub struct ViewerNavigation {
     pub previous_id: Option<String>,
     pub next_id: Option<String>,
     pub generation: i64,
+    pub key: String,
 }

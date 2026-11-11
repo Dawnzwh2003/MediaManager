@@ -2,7 +2,7 @@
 
 ## 当前基线与本轮变更理由
 
-身份、重复文件、保守匹配、Like、Activation View、Qualified Play、播放状态、completed、三层播放及 100,000+ 架构已获用户批准。当前已实施至 Phase 7：扫描、metadata/thumbnail、Library、Viewer/Player、事件服务与后台统计修复；各 Phase 小节中的范围限制保留为当时历史，实际增量见文末 Phase 7。依赖版本与平台参数在对应 Phase 验证。
+身份、重复文件、保守匹配、Like、Activation View、Qualified Play、播放状态、completed、三层播放及 100,000+ 架构已获用户批准。Phase 8 在扫描、Library、Viewer/Player、活动日志和统计修复基础上交付完整查询。各阶段历史范围和新增行为见对应小节。
 
 当前工具链政策由用户最新授权改为 Rust stable，本机 rustc/cargo 为 1.99.1（D025）。rust-toolchain.toml 选择实际编译通道，Cargo.toml 的 rust-version=1.90 仍是最低版本声明，不能当作当前 pin 或最低版本已验收。npm/Cargo 依赖及真实锁文件均已到位；2026-11-04 类型检查、前端构建、完整 Rust 测试/Clippy、Tauri info、正式 release 构建及隔离的真实桌面 IPC/持久化/实例锁检查均通过。浏览器预览专项仍受工具阻塞，阶段状态见 PLANS.md。以下 Phase 1 版本描述为历史快照。
 
@@ -388,6 +388,14 @@ DTO 版本化，TypeScript strict，Rust 最终校验。ID/计数/sequence 用�
 - 发布结束先停 delta 捕获，base/delta 按最多 1000 行清理。崩溃按 checkpoint 续跑；取消同一短事务停捕获并清理，失败标记 failed、保留日志和已发布修复，后续后台有界清理派生 scratch，可用新 request 重试。全库修复逐媒体生效，UI 展示 running/cleaning/complete/cancelled/failed，不宣称全库瞬时原子切换。
 - LikeButton 和 L 都进入 activityApi.addLike → 同一 add_like service；响应更新当前计数，不以 optimistic increment 代替事务成功，不合并主动动作。重试保留失败 request_id，前台自身 Like 后刷新导航代次；其他后台变化仍明确报告 stale cursor。重建按钮只启动后台 job，不进行全库前端统计或原件读取。原件资源/标签/进度边界保持不变。
 - 验证：100 并发/快速 Likes、Like/View/Play 故障回滚、COMMIT 失败、activation、资格/终结、重建并发及恢复、100,002 媒体分批实测、真实 Tauri 交互与解码。记录与截图见 [Phase 7 验收](docs/validation/phase7-validation.md)。WebView 上报用于正常客户端顺序/状态校验，不声称可抵御修改客户端伪造播放证据。
+
+## Phase 8 查询实现
+
+- LibraryFilter 支持三个搜索字段、媒体类型、目录后代、最多 20 个 Custom Tag 的 AND/OR、三个计数区间、导入时间区间及查看状态。SQL 参数绑定所有值，内部白名单提供列、方向和索引。递归目录查询和关系 EXISTS 保证结果按媒体去重。文件名和标签使用字面子串匹配。
+- v8 迁移添加四个虚拟排序键，替换文件名索引，建立 state 加 View Count、Play Count、Created、Recently Viewed、Recently Played 的排序索引，以及 state/type/Imported 的组合索引。沿用关系表索引。新增字段变化与既有扫描、标签、Like 变化共同推进查询代次。迁移通过既有备份和 checksum 机制执行。
+- 查询以排序键和 media ID 做双向 keyset。游标绑定筛选签名、代次及随机版本/seed。数值键用十进制字符串跨 IPC，避免丢失 SQLite i64 精度。页面最多 200 项，应用每页 100 项。查看器读取邻居与代次在同一快照内完成，进入媒体时捕获排序锚点，自己的 View、Like 或合格 Play 改变排名后仍按该锚点找邻居。
+- Random v1 的域为 `MediaManager/random/v1`。对域、由 32 个十六进制字符组成的 seed 和 media ID 的 UTF-8 字节分别加 u64 大端长度前缀，再做 SHA-256。SQLite 按摘要十六进制文本与 ID 升序。桌面保留一个专用查询连接和一份磁盘临时排序索引，首次访问构建，后续页面按索引 seek。新增 ID 按 created_seq 增量补齐。切换 seed 替换临时排序数据。构建在阻塞工作线程的读快照内进行，临时 SQLite 页缓存设置为 4 MiB。
+- 初始 seed 是固定的 v1 值。Shuffle Again 生成新 seed 并存入 WebView 本地设置。筛选、刷新、分页、切换排序及重开应用复用此设置。当前目录是实时查询，新增媒体按其哈希键加入，已有媒体的相对随机顺序保持稳定。
 
 ## 技术依据
 

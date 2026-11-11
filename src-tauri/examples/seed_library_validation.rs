@@ -5,7 +5,12 @@ use std::{fs, path::Path, sync::atomic::AtomicBool};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-    let root = workspace.join(".tools/validation/phase5-native");
+    let fixture = if std::env::args().nth(1).as_deref() == Some("--phase8") {
+        "phase8"
+    } else {
+        "phase5-native"
+    };
+    let root = workspace.join(".tools/validation").join(fixture);
     let runtime = root.join("runtime");
     if runtime.join("data/library.sqlite3").exists() {
         return Err("Validation database already exists; refusing to overwrite it".into());

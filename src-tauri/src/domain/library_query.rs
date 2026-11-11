@@ -4,11 +4,60 @@ use serde::{Deserialize, Serialize};
 pub struct LibraryFilter {
     #[serde(default)]
     pub search: String,
+    #[serde(default)]
+    pub search_scope: SearchScope,
     pub media_type: Option<String>,
     pub system_tag_id: Option<String>,
     pub custom_tag_id: Option<String>,
     #[serde(default)]
+    pub custom_tag_ids: Vec<String>,
+    #[serde(default)]
+    pub custom_tag_mode: TagMode,
+    pub likes: Option<InclusiveRange>,
+    pub views: Option<InclusiveRange>,
+    pub plays: Option<InclusiveRange>,
+    pub imported: Option<InclusiveRange>,
+    #[serde(default)]
+    pub viewed: ViewedStatus,
+    pub random: Option<RandomOrder>,
+    #[serde(default)]
     pub sort: LibrarySort,
+}
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum SearchScope {
+    #[default]
+    All,
+    Filename,
+    SystemTag,
+    CustomTag,
+}
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum TagMode {
+    #[default]
+    And,
+    Or,
+}
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ViewedStatus {
+    #[default]
+    All,
+    Viewed,
+    Unviewed,
+}
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InclusiveRange {
+    pub min: Option<i64>,
+    pub max: Option<i64>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RandomOrder {
+    pub seed: String,
+    pub version: u8,
 }
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -17,6 +66,18 @@ pub enum LibrarySort {
     Recent,
     Name,
     Likes,
+    NameDesc,
+    LikesAsc,
+    Views,
+    ViewsAsc,
+    Plays,
+    PlaysAsc,
+    ImportedAsc,
+    Created,
+    CreatedAsc,
+    RecentlyViewed,
+    RecentlyPlayed,
+    Random,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -24,9 +85,8 @@ pub struct LibraryCursor {
     pub generation: i64,
     pub signature: String,
     pub id: String,
-    pub imported_at: i64,
-    pub file_name: String,
-    pub like_count: i64,
+    /// Text or a lossless decimal SQLite integer, selected by the signed query contract.
+    pub key: String,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]

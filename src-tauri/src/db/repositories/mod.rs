@@ -1,8 +1,10 @@
 //! Typed storage access only. No SQL connection is exposed over IPC.
 pub(crate) mod activity;
+mod catalog_query;
 mod events;
 mod library;
 mod playback;
+mod random_order;
 pub(crate) mod statistics;
 pub use playback::PlaybackRepository;
 mod media;

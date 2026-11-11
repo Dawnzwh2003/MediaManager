@@ -2,7 +2,7 @@
 
 ## 状态与文档范围
 
-当前用户已授权 Phase 7 Event Log + Counter Cache：Like、Activation View、Qualified Play、分项/统一统计重建和 Like 按钮/L 快捷键；完整测试通过后停止。事件日志始终是事实来源，计数仅为可重建缓存。Phase 6 不写 Play 的限制是当时阶段边界，已由本次明确实施授权推进；批准的 Like/View/Play 定义保持不变。
+当前授权为 Phase 8 完整查询系统。交付文件名、System Tag、Custom Tag 搜索，组合筛选，完整排序，稳定随机顺序和性能测试。事件日志仍是统计事实来源，查询读取可重建的计数缓存。
 
 固定技术栈：Tauri、React、TypeScript、Rust、SQLite、FFmpeg。具体依赖版本在工程初始化时锁定。
 
@@ -55,6 +55,14 @@ Phase 1 只建立基础设施，原生验证仍受环境限制。用户本轮已
 - Play 沿用下文已批准的五秒/短片真实 ended 定义，打开播放器不计数；资格时插入，关闭/切换时受限终结同一事件。播放进度独立保存，不用位置更新代替观看证据。
 - 事件插入、数据库触发器计数更新、活动重建增量及工作状态必须事务原子提交；失败回滚。rebuild_statistics 从日志修复三个计数及 last_viewed_at/last_played_at，后台分批执行、可恢复和取消。
 - 测试必须覆盖 100 rapid Likes、事务回滚、计数重建、View 去重/A→B→A、有效/无效短播放、completed 和统一统计；失败修复后重跑完整测试，到此停止。
+
+## Phase 8 查询范围
+
+- 搜索可选文件名、System Tag、Custom Tag 或全部字段。字面子串匹配支持中文和 SQLite 的 ASCII 大小写折叠。System Tag 匹配包含后代目录。
+- 媒体类型、System Tag、Custom Tag、Like/View/Play Count、导入日期和已查看状态可以组合。Custom Tag 多选支持 AND 与 OR。计数上下限及导入起止日均包含端点。已查看按 View Count 大于零判定。
+- Like、View、Play、Imported、Created 和文件名支持升降序。另提供 Recently Viewed、Recently Played 和 Random。缺失时间按最早值排列，稳定媒体 ID 打破排序并列。
+- Random 使用稳定 seed 和版本。分页、刷新、重新渲染和重新选择 Random 均复用当前 seed。用户点 Shuffle Again 时生成并保存新 seed。
+- SQLite 执行查询和排序。前端按游标获取有界页面并虚拟渲染。验证 100,000 项媒体的普通和随机分页、组合筛选及索引使用情况。
 
 ## 长期核心原则（已批准）
 

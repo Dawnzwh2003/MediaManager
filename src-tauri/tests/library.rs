@@ -32,7 +32,11 @@ fn fixture() -> (tempfile::TempDir, AppPaths, Database) {
                 file_size: 17,
                 created_time: None,
                 modified_time: 1,
-                imported_at: 1,
+                imported_at: match id {
+                    "a" => 100,
+                    "b" | "c" => 200,
+                    _ => 300,
+                },
                 last_seen_at: 1,
                 width: Some(160),
                 height: Some(90),
@@ -95,6 +99,264 @@ fn tag_query(kind: &str, parent: Option<&str>, media: Option<&str>) -> TagQuery 
         search: String::new(),
         limit: 100,
     }
+}
+
+fn ids(page: LibraryPage) -> Vec<String> {
+    page.items.into_iter().map(|media| media.id).collect()
+}
+
+fn seed_query_facts(paths: &AppPaths) {
+    let sql = rusqlite::Connection::open(&paths.database).unwrap();
+    sql.execute_batch("UPDATE media SET
+        file_name=CASE id WHEN 'a' THEN 'Zebra.JPG' WHEN 'b' THEN 'alpine.PNG' WHEN 'c' THEN 'Clip.mp4' ELSE file_name END,
+        like_count=CASE id WHEN 'a' THEN 2 WHEN 'd' THEN 0 ELSE 5 END,
+        view_count=CASE id WHEN 'a' THEN 0 WHEN 'c' THEN 2 ELSE 4 END,
+        play_count=CASE id WHEN 'b' THEN 1 WHEN 'c' THEN 2 ELSE 0 END,
+        created_time=CASE id WHEN 'a' THEN NULL WHEN 'c' THEN 200 ELSE 300 END,
+        last_viewed_at=CASE id WHEN 'b' THEN 200 WHEN 'c' THEN 300 WHEN 'd' THEN 400 END,
+        last_played_at=CASE id WHEN 'b' THEN 600 WHEN 'c' THEN 500 END;").unwrap();
+}
+
+#[test]
+fn scoped_search_combines_literal_names_tree_tags_and_custom_tag_modes_with_ranges() {
+    let (_temp, paths, mut db) = fixture();
+    seed_query_facts(&paths);
+    for (id, name, members) in [
+        ("travel", "Travel", ["b", "c"]),
+        ("night", "Night", ["c", "d"]),
+    ] {
+        db.repositories().custom_tags().create(id, name, 1).unwrap();
+        for media in members {
+            db.repositories().custom_tags().attach(media, id).unwrap();
+        }
+    }
+    for (scope, term, expected) in [
+        (SearchScope::Filename, "%_", vec!["d"]),
+        (SearchScope::Filename, "CLIP", vec!["c"]),
+        (SearchScope::SystemTag, "CHILD", vec!["c", "b"]),
+        (SearchScope::CustomTag, "TrAvEl", vec!["c", "b"]),
+        (SearchScope::All, "child", vec!["c", "b"]),
+        (SearchScope::Filename, "child", vec![]),
+        (SearchScope::CustomTag, "clip", vec![]),
+    ] {
+        let filter = LibraryFilter {
+            search_scope: scope,
+            search: term.into(),
+            ..Default::default()
+        };
+        assert_eq!(ids(query(&mut db, &filter, None, 100)), expected);
+    }
+    let mut filter = LibraryFilter {
+        custom_tag_ids: vec!["travel".into(), "night".into(), "travel".into()],
+        ..Default::default()
+    };
+    assert_eq!(ids(query(&mut db, &filter, None, 100)), ["c"]);
+    filter.custom_tag_mode = TagMode::Or;
+    assert_eq!(ids(query(&mut db, &filter, None, 100)), ["d", "c", "b"]);
+    filter.system_tag_id = Some("root".into());
+    assert_eq!(ids(query(&mut db, &filter, None, 100)), ["c", "b"]);
+    filter.media_type = Some("video".into());
+    filter.likes = Some(InclusiveRange {
+        min: Some(5),
+        max: Some(5),
+    });
+    filter.views = Some(InclusiveRange {
+        min: Some(2),
+        max: Some(4),
+    });
+    filter.plays = Some(InclusiveRange {
+        min: Some(2),
+        max: None,
+    });
+    filter.imported = Some(InclusiveRange {
+        min: Some(200),
+        max: Some(200),
+    });
+    filter.viewed = ViewedStatus::Viewed;
+    assert_eq!(ids(query(&mut db, &filter, None, 100)), ["c"]);
+    assert_eq!(
+        ids(query(
+            &mut db,
+            &LibraryFilter {
+                viewed: ViewedStatus::Unviewed,
+                ..Default::default()
+            },
+            None,
+            100
+        )),
+        ["a"]
+    );
+    filter.plays = Some(InclusiveRange {
+        min: Some(5),
+        max: Some(2),
+    });
+    assert!(db
+        .repositories()
+        .library()
+        .query(&filter, None, 100)
+        .is_err());
+}
+
+#[test]
+fn every_regular_sort_seeks_through_ties_and_nulls_and_supports_reverse_navigation() {
+    use LibrarySort::*;
+    let (_temp, paths, mut db) = fixture();
+    seed_query_facts(&paths);
+    for (sort, expected) in [
+        (Recent, ["d", "c", "b", "a"]),
+        (ImportedAsc, ["a", "b", "c", "d"]),
+        (Name, ["d", "b", "c", "a"]),
+        (NameDesc, ["a", "c", "b", "d"]),
+        (Likes, ["c", "b", "a", "d"]),
+        (LikesAsc, ["d", "a", "b", "c"]),
+        (Views, ["d", "b", "c", "a"]),
+        (ViewsAsc, ["a", "c", "b", "d"]),
+        (Plays, ["c", "b", "d", "a"]),
+        (PlaysAsc, ["a", "d", "b", "c"]),
+        (Created, ["d", "b", "c", "a"]),
+        (CreatedAsc, ["a", "c", "b", "d"]),
+        (RecentlyViewed, ["d", "c", "b", "a"]),
+        (RecentlyPlayed, ["b", "c", "d", "a"]),
+    ] {
+        let filter = LibraryFilter {
+            sort,
+            ..Default::default()
+        };
+        let mut cursor = None;
+        for id in expected {
+            let page = query(&mut db, &filter, cursor.as_ref(), 1);
+            cursor = page.next_cursor.clone();
+            assert_eq!(ids(page), [id], "{sort:?}");
+        }
+        assert!(cursor.is_none());
+        let nav = db
+            .repositories()
+            .library()
+            .navigation(&filter, expected[1], None, None)
+            .unwrap();
+        assert_eq!(nav.previous_id.as_deref(), Some(expected[0]));
+        assert_eq!(nav.next_id.as_deref(), Some(expected[2]));
+    }
+    let filter = LibraryFilter {
+        sort: RecentlyViewed,
+        ..Default::default()
+    };
+    let before = db
+        .repositories()
+        .library()
+        .navigation(&filter, "c", None, None)
+        .unwrap();
+    let old_cursor = query(&mut db, &filter, None, 1).next_cursor.unwrap();
+    rusqlite::Connection::open(&paths.database)
+        .unwrap()
+        .execute(
+            "UPDATE media SET view_count=view_count+1,last_viewed_at=900 WHERE id='c'",
+            [],
+        )
+        .unwrap();
+    assert!(matches!(
+        db.repositories()
+            .library()
+            .query(&filter, Some(&old_cursor), 100),
+        Err(AppError::StaleCursor)
+    ));
+    let after = db
+        .repositories()
+        .library()
+        .navigation(&filter, "c", None, Some(&before.key))
+        .unwrap();
+    assert_eq!(
+        (after.previous_id, after.next_id),
+        (before.previous_id, before.next_id)
+    );
+}
+
+fn random_filter(seed: &str) -> LibraryFilter {
+    LibraryFilter {
+        sort: LibrarySort::Random,
+        random: Some(RandomOrder {
+            seed: seed.repeat(32),
+            version: 1,
+        }),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn random_seed_survives_filters_reconnect_and_new_media_without_reordering_survivors() {
+    let (_temp, _paths, mut db) = fixture();
+    let original = random_filter("0");
+    let first = query(&mut db, &original, None, 2);
+    let cursor = first.next_cursor.clone().unwrap();
+    let full = ids(query(&mut db, &original, None, 100));
+    assert_eq!(
+        [ids(first), ids(query(&mut db, &original, Some(&cursor), 2))].concat(),
+        full
+    );
+    let mut other = db.background_connection().unwrap();
+    assert_eq!(ids(query(&mut other, &original, None, 100)), full);
+    let filtered = LibraryFilter {
+        media_type: Some("image".into()),
+        ..original.clone()
+    };
+    assert_eq!(
+        ids(query(&mut db, &filtered, None, 100)),
+        full.iter()
+            .filter(|id| *id != "c")
+            .cloned()
+            .collect::<Vec<_>>()
+    );
+    let shuffled = random_filter("1");
+    assert!(matches!(
+        db.repositories()
+            .library()
+            .query(&shuffled, Some(&cursor), 100),
+        Err(AppError::StaleCursor)
+    ));
+    assert_ne!(ids(query(&mut db, &shuffled, None, 100)), full);
+    assert_eq!(ids(query(&mut db, &original, None, 100)), full);
+    db.repositories()
+        .media()
+        .insert(&NewMedia {
+            id: "added".into(),
+            file_path: "/synthetic/added.png".into(),
+            file_name: "Added.png".into(),
+            media_type: MediaType::Image,
+            fingerprint: None,
+            file_size: 1,
+            created_time: None,
+            modified_time: 1,
+            imported_at: 400,
+            last_seen_at: 1,
+            width: None,
+            height: None,
+            duration: None,
+        })
+        .unwrap();
+    let expanded = ids(query(&mut db, &original, None, 100));
+    assert_eq!(expanded.len(), 5);
+    assert_eq!(
+        expanded
+            .into_iter()
+            .filter(|id| id != "added")
+            .collect::<Vec<_>>(),
+        full
+    );
+    let mut invalid = random_filter("q");
+    assert!(db
+        .repositories()
+        .library()
+        .query(&invalid, None, 100)
+        .is_err());
+    invalid.random = Some(RandomOrder {
+        seed: "0".repeat(32),
+        version: 2,
+    });
+    assert!(db
+        .repositories()
+        .library()
+        .query(&invalid, None, 100)
+        .is_err());
 }
 #[test]
 fn descendant_filter_and_tag_intersection_are_recursive_and_deduplicated() {
@@ -419,4 +681,81 @@ fn hundred_thousand_media_keyset_pages_have_no_gaps_and_use_the_cursor_index() {
             .any(|s| s.contains("SEARCH") && s.contains("media_library_recent")),
         "{plan:?}"
     );
+
+    let filter = random_filter("0");
+    let start = Instant::now();
+    let first = query(&mut db, &filter, None, 100);
+    let initial_ms = start.elapsed().as_secs_f64() * 1000.0;
+    let first_ids = first
+        .items
+        .iter()
+        .map(|item| item.id.clone())
+        .collect::<Vec<_>>();
+    let mut seen = vec![false; 100001];
+    let mut total = 0;
+    let mut warm = Vec::new();
+    let mut page = first;
+    loop {
+        for item in page.items {
+            let id: usize = item.id[1..].parse().unwrap();
+            assert!(!seen[id], "duplicate random media {id}");
+            seen[id] = true;
+            total += 1;
+        }
+        let Some(cursor) = page.next_cursor else {
+            break;
+        };
+        let start = Instant::now();
+        page = query(&mut db, &filter, Some(&cursor), 100);
+        warm.push(start.elapsed().as_secs_f64() * 1000.0);
+    }
+    assert_eq!(total, 100000);
+    assert_eq!(warm.len(), 999);
+    assert_eq!(ids(query(&mut db, &filter, None, 100)), first_ids);
+    let deep = *warm.last().unwrap();
+    warm.sort_by(f64::total_cmp);
+    eprintln!("SCALE Random 100000 media / 1000 pages: build+first={initial_ms:.3}ms p50={:.3}ms p95={:.3}ms last={deep:.3}ms", warm[499], warm[949]);
+
+    sql.execute_batch("BEGIN;
+        INSERT INTO system_tags(id,source_root,directory_path,name,last_seen_at) VALUES('root','/fixture','/fixture','Synthetic collection',1);
+        INSERT INTO media_system_tags SELECT id,'root' FROM media WHERE imported_at%2=0;
+        INSERT INTO custom_tags VALUES('samples','Sample tag',1,1);
+        INSERT INTO media_custom_tags SELECT id,'samples' FROM media WHERE imported_at%10=0;
+        COMMIT;").unwrap();
+    let filter = LibraryFilter {
+        search: "sample tag".into(),
+        search_scope: SearchScope::All,
+        system_tag_id: Some("root".into()),
+        custom_tag_ids: vec!["samples".into()],
+        media_type: Some("image".into()),
+        viewed: ViewedStatus::Unviewed,
+        likes: Some(InclusiveRange {
+            min: Some(0),
+            max: Some(0),
+        }),
+        imported: Some(InclusiveRange {
+            min: Some(40000),
+            max: Some(60000),
+        }),
+        ..Default::default()
+    };
+    let start = Instant::now();
+    let mut page = query(&mut db, &filter, None, 100);
+    let first_ms = start.elapsed().as_secs_f64() * 1000.0;
+    let mut expected = 60000;
+    let mut pages = 1;
+    loop {
+        for media in page.items {
+            assert_eq!(media.imported_at, expected);
+            expected -= 10;
+        }
+        let Some(cursor) = page.next_cursor else {
+            break;
+        };
+        page = query(&mut db, &filter, Some(&cursor), 100);
+        pages += 1;
+    }
+    assert_eq!(expected, 39990);
+    assert_eq!(pages, 21);
+    eprintln!("SCALE combined search/tag/type/count/date/viewed: 2001 matches, 21 pages, first={first_ms:.3}ms total={:.3}ms", start.elapsed().as_secs_f64() * 1000.0);
 }

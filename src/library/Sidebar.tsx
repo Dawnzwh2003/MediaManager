@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { LibraryFilter, LibraryTag } from "../api/library-contracts.ts";
 import { useTagPage } from "./hooks.ts";
+import { customFilterIds, MAX_FILTER_TAGS } from "./model.ts";
 
 function SystemBranch({ parentId, filter, choose, revision, depth = 0 }: { parentId: string | null; filter: LibraryFilter; choose: (tag: LibraryTag) => void; revision: number; depth?: number }) {
   const [after, setAfter] = useState<string | null>(null);
@@ -25,15 +26,21 @@ export function Sidebar({ filter, onFilter, revision, onManage }: { filter: Libr
   const [after, setAfter] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const { page, loading, error } = useTagPage({ kind: "custom", parentId: null, afterId: after, mediaId: null, search, limit: 100 }, revision);
+  const selected = customFilterIds(filter);
+  function toggleTag(id: string) {
+    const ids = selected.includes(id) ? selected.filter(tag => tag !== id) : [...selected, id];
+    onFilter({ ...filter, customTagId: null, customTagIds: ids });
+  }
   return <aside className="sidebar" aria-label="媒体库导航">
     <div className="brand"><span className="brand-mark">▦</span><div>Media Library<small>本地媒体，井然有序</small></div></div>
-    <div className="nav-section"><span className="section-label">LIBRARY</span><button className={`nav-item all-media ${!filter.systemTagId && !filter.customTagId ? "active" : ""}`} onClick={() => onFilter({ ...filter, systemTagId: null, customTagId: null })}><span>▦</span> All Media</button></div>
-    <div className="nav-section"><h2 className="section-label">SYSTEM TAGS <span className="badge">只读</span></h2><SystemBranch parentId={null} filter={filter} choose={tag => onFilter({ ...filter, systemTagId: tag.id, customTagId: null })} revision={revision} /><p className="nav-note">父目录默认包含所有子目录。</p></div>
+    <div className="nav-section"><span className="section-label">LIBRARY</span><button className={`nav-item all-media ${!filter.systemTagId && !selected.length ? "active" : ""}`} onClick={() => onFilter({ ...filter, systemTagId: null, customTagId: null, customTagIds: [] })}><span>▦</span> All Media</button></div>
+    <div className="nav-section"><h2 className="section-label">SYSTEM TAGS <span className="badge">只读</span></h2><SystemBranch parentId={null} filter={filter} choose={tag => onFilter({ ...filter, systemTagId: tag.id === filter.systemTagId ? null : tag.id })} revision={revision} /><p className="nav-note">父目录默认包含所有子目录。</p></div>
     <div className="nav-section custom-navigation"><div className="section-heading"><h2 className="section-label">CUSTOM TAGS</h2><button className="icon-button" onClick={onManage} aria-label="管理 Custom Tags">＋</button></div>
       <input className="tag-search" aria-label="搜索导航标签" placeholder="查找标签…" maxLength={128} value={search} onChange={e => { setSearch(e.target.value); setAfter(null); }} />
       {loading && <p className="muted small">正在读取标签…</p>}{error && <p role="alert" className="small">{error.message}</p>}
       {!loading && !error && !page.items.length && <p className="muted small">还没有标签，点击 ＋ 创建。</p>}
-      {page.items.map(tag => <button key={tag.id} className={`nav-item ${filter.customTagId === tag.id ? "active" : ""}`} onClick={() => onFilter({ ...filter, customTagId: tag.id, systemTagId: null })}><span className="tag-dot" /><span className="truncate">{tag.name}</span></button>)}
+      {selected.length > 0 && <div className="mini-pager"><span className="small muted">已选 {selected.length}/{MAX_FILTER_TAGS}</span><button onClick={() => onFilter({ ...filter, customTagId: null, customTagIds: [] })}>清除</button></div>}
+      {page.items.map(tag => <button key={tag.id} className={`nav-item ${selected.includes(tag.id) ? "active" : ""}`} aria-pressed={selected.includes(tag.id)} disabled={selected.length >= MAX_FILTER_TAGS && !selected.includes(tag.id)} onClick={() => toggleTag(tag.id)}><span className="tag-dot" /><span className="truncate">{tag.name}</span></button>)}
       {after && <button className="text-button" onClick={() => setAfter(null)}>返回标签首页</button>}{page.nextAfter && <button className="text-button" onClick={() => setAfter(page.nextAfter)}>下一组标签 →</button>}
     </div>
     <div className="sidebar-footer"><span className="status-dot" /> 本地数据库 · 原件只读</div>

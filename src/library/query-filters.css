@@ -1,0 +1,69 @@
+.query-toolbar {
+  flex-wrap: wrap;
+  align-items: center;
+}
+.query-toolbar .search-field {
+  min-width: 150px;
+}
+.query-filters {
+  container-type: inline-size;
+  padding: 12px;
+  max-height: min(44vh, 280px);
+  overflow: auto;
+  background: #f9faf6;
+  border: 1px solid #e0e5da;
+  border-radius: 6px;
+}
+.query-filter-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 175px), 1fr));
+  gap: 12px;
+}
+.query-range {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.query-range legend, .query-viewed {
+  font-size: 11px;
+  color: #455b50;
+}
+.query-range-dates {
+  grid-template-columns: minmax(0, 1fr);
+}
+.query-date-bound {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  font-size: 10px;
+}
+@container (min-width: 380px) {
+  .query-range-dates {
+    grid-column: span 2;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.query-range input, .query-viewed select {
+  min-width: 0;
+  width: 100%;
+  border: 1px solid #dce4d7;
+  border-radius: 5px;
+  background: white;
+  padding: 6px;
+  font: inherit;
+  font-size: 11px;
+}
+.query-viewed {
+  display: grid;
+  gap: 4px;
+}
+.query-filter-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}

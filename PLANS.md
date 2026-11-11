@@ -1,8 +1,8 @@
 # 分阶段开发计划
 
-## 当前状态（Phase 7）
+## 当前状态（Phase 8）
 
-Event Log + Counter Cache 已完成：Like、Activation View、Qualified Play、一次终结及后台统计重建。前端 47/47，两种 Rust 配置各 66/66（含真实 FFmpeg），构建、开发监听、Clippy、格式与真实桌面回归通过。100,002 媒体分批重建、并发事件、COMMIT 故障及恢复均已验证。测试窗口/服务已关闭，截图会话已释放；本轮停止，不推进下一阶段。详见 [Phase 7 验证记录](docs/validation/phase7-validation.md)。
+Phase 8 完整查询已通过 Windows 验收。三类搜索、组合筛选、15 种排序和稳定 Random 已验证。前端 48/48，两种 Rust 配置各 70/70，桌面 10 项检查通过。测试窗口、1420 服务和截图会话已清理，本轮停止。详见 [Phase 8 验证记录](docs/validation/phase8-validation.md)。
 
 ## Phase 4 验收历史（2026-11-08）
 
@@ -203,7 +203,7 @@ Phase 0 已将用户批准规则写入设计并通过 15 项 architecture review
 - v6 migration 仅加入 playback_owners。PlaybackState 按稳定 ID/版本独立保存，owner + state_version + sequence 防止迟到写；前端串行合并 checkpoint，失败先按同一请求重试。保存点包含 5 秒周期、pause/ended、切换、关闭、pagehide/visibility，以及原生关闭前最多 3 秒尽力 flush。
 - 前端 Node 42/42、两种 Rust feature 配置各 54/54（含真实 FFmpeg）、开发监听 1/1、build/Clippy/fmt 已通过。真实 Tauri 回归 15 项通过，并验证图片拖动、图片/视频全屏和退出保存 24.5 秒；事件/播放计数为零、5 个合成原件指纹不变。修复仅音频可解码时的黑屏回退与重载会话回收，见 [验证与截图](docs/validation/phase6-validation.md)。没有新增 Play/View/Like Event 或 completed 资格判断；不推进下一 Phase。
 
-## Phase 7 — Event Log + Counter Cache（当前授权）
+## Phase 7 — Event Log + Counter Cache（验收历史）
 
 - **状态：已验收（Windows，2026-11-09）。** 三个事件日志为事实来源，media 计数仅为 Counter Cache。新增 v7 migration，旧事件与约束保留；Counter Cache 继续由原触发器维护，服务不重复累加。
 - add_like 按 request_id 幂等；4 并发调用者累计 100 次、日志=100/cache=100。LikeButton 和 L 共用服务，无 toggle/撤销，Ctrl/Alt/Meta 组合及键盘自动重复不误记主动 Like。
@@ -212,6 +212,14 @@ Phase 0 已将用户批准规则写入设计并通过 15 项 architecture review
 - rebuild_like/view/play_count、各 all_counts 及 rebuild_statistics 后台高水位/base/delta/checkpoint；1000 日志/100 媒体短事务，有界清理、取消、失败与崩溃续跑，不在普通启动全库重建。单媒体计数/时间原子发布，全库逐批修复。
 - 12 项新增 Rust 场景包含 Like/View/Play 事务失败、COMMIT 失败、重建并发/恢复/零项、播放与 activation 边界；完整前端 47/47、backend 两种配置各 66/66，build/test:dev/Clippy/fmt 通过。100,002 媒体/2,502 事件在 1,009 步完成，桌面 10 项真实 IPC 回归与原生 L 检查通过，退出查库全部缓存及最近时间零差异。
 - 验收截图、实测和清理见 [Phase 7 记录](docs/validation/phase7-validation.md)。不新增 Quick Browser/History 页面或文件操作，到此停止。
+
+## Phase 8 — 完整查询系统（当前授权）
+
+- 三类搜索和组合筛选。Custom Tag 多选 AND/OR，包含端点的计数及导入日期范围，已查看和未查看状态。
+- 15 种排序采用 SQLite keyset。Migration 8 建立排序和类型索引，游标绑定过滤、排序、查询代次和 seed。
+- Random 按 SHA-256 v1 和稳定 seed 排列，首次建立临时索引，热分页复用。Shuffle Again 保存新 seed。
+- 普通和随机各遍历 100,000 项及 1,000 页，无重复和遗漏。桌面配置普通 p95 为 1.261 ms，随机热分页 p95 为 1.950 ms，随机建索引加首页为 1,562.122 ms。组合筛选的 2,001 项结果和实际 EXPLAIN 检查均通过。
+- 自动测试、构建、Clippy、格式检查与隔离桌面截图见 [Phase 8 验证记录](docs/validation/phase8-validation.md)。
 
 ## 后续路线 — 恢复、规模与发布验收（未授权）
 
@@ -223,6 +231,6 @@ Phase 0 已将用户批准规则写入设计并通过 15 项 architecture review
 
 ## 依赖与状态维护
 
-主路径 0→1→2→3→4→5→6→7；数据层接口可在依赖已满足时细化，不能因阶段重排绕过事务和模块边界。每次推进记录完成范围、实际验证命令/结果和剩余风险。
+主路径 0→1→2→3→4→5→6→7→8。数据层接口在依赖满足后细化。每次推进记录完成范围、实际验证结果和剩余风险。
 
-当前授权为 Phase 7 Event Log + Counter Cache，完整测试通过后停止；打开播放器或保存位置本身不等于有效 Play。阶段授权与阶段验收分别记录。
+当前授权为 Phase 8 完整查询系统，性能验证后停止。

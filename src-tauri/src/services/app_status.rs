@@ -17,11 +17,28 @@ struct Runtime {
 pub struct AppState {
     #[cfg(feature = "desktop")]
     pub(crate) viewers: crate::viewer::ViewerService,
+    #[cfg(feature = "desktop")]
+    random_catalog: Mutex<Option<Database>>,
     root: PathBuf,
     runtime: Mutex<Option<Runtime>>,
 }
 
 impl AppState {
+    #[cfg(feature = "desktop")]
+    pub(crate) fn catalog<T>(
+        &self,
+        random: bool,
+        work: impl FnOnce(&mut Database) -> AppResult<T>,
+    ) -> AppResult<T> {
+        if !random {
+            return work(&mut self.database()?);
+        }
+        let mut slot = self.random_catalog.lock().map_err(|_| AppError::Internal)?;
+        if slot.is_none() {
+            *slot = Some(self.database()?);
+        }
+        work(slot.as_mut().ok_or(AppError::Internal)?)
+    }
     #[cfg(feature = "desktop")]
     pub(crate) fn database(&self) -> AppResult<Database> {
         self.status()?;
@@ -35,6 +52,8 @@ impl AppState {
         Self {
             #[cfg(feature = "desktop")]
             viewers: crate::viewer::ViewerService::default(),
+            #[cfg(feature = "desktop")]
+            random_catalog: Mutex::new(None),
             root,
             runtime: Mutex::new(None),
         }

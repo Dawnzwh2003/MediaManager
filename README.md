@@ -1,6 +1,6 @@
 # Media Manager
 
-Tauri + React + TypeScript + Rust + SQLite 媒体库，包含扫描、metadata/thumbnail、虚拟网格、Custom Tag、ImageViewer/VideoPlayer 与版本化进度恢复。Phase 7 支持累加 Like（按钮或 L）、主媒体 activation View、符合五秒/短片真实结束规则的 Play，以及后台“重建统计”。事件日志是事实来源，计数可重建；打开播放器、seek 和保存进度不会直接增加播放数。验收与截图见 [Phase 7 记录](docs/validation/phase7-validation.md)。
+Tauri + React + TypeScript + Rust + SQLite 媒体库，包含扫描、缩略图、虚拟网格、标签、查看器、播放进度和活动统计。Phase 8 支持文件名和标签搜索、组合筛选和 15 种 SQLite 排序。在侧栏多选 Custom Tag，再选择 AND 或 OR。「筛选」提供计数、导入日期和查看状态。「Shuffle Again」更换并保存随机 seed。
 
 ## 环境与安装
 
