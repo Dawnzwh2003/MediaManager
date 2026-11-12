@@ -2,6 +2,8 @@
 
 Tauri + React + TypeScript + Rust + SQLite 媒体库，包含扫描、缩略图、虚拟网格、标签、查看器、播放进度和活动统计。Phase 8 支持文件名和标签搜索、组合筛选和 15 种 SQLite 排序。在侧栏多选 Custom Tag，再选择 AND 或 OR。「筛选」提供计数、导入日期和查看状态。「Shuffle Again」更换并保存随机 seed。
 
+Phase 10 在侧栏提供 History、Continue Watching、Dashboard。History 按事件汇总五类记录，可切换 Today / Last 7 Days / Last 30 Days / All Time；7/30 天包含今天，按本地日历计算。Continue Watching 显示当前版本未完成视频和播放进度，打开后从保存位置恢复。Dashboard 展示媒体数量、Like 总数、当天 Views 和五组有限预览。聚合、排序和分页均由 SQLite 完成，前端不加载完整事件表。范围和验收结果见 [Phase 10 记录](docs/validation/phase10-validation.md)。
+
 ## 环境与安装
 
 - Node.js >=22.18（当前环境为 24.22.2），npm。

@@ -1,5 +1,30 @@
 use crate::domain::library_query::*;
 use crate::domain::quick_browse::*;
+use crate::domain::reports::*;
+
+#[tauri::command]
+pub async fn query_reports(
+    state: tauri::State<'_, Arc<AppState>>,
+    query: ReportQuery,
+    cursor: Option<ReportCursor>,
+    limit: u32,
+) -> AppResult<ReportPage> {
+    library_call(Arc::clone(state.inner()), move |db| {
+        crate::services::reports::query(db, &query, cursor.as_ref(), limit)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn get_dashboard(
+    state: tauri::State<'_, Arc<AppState>>,
+    today: TimeWindow,
+) -> AppResult<Dashboard> {
+    library_call(Arc::clone(state.inner()), move |db| {
+        crate::services::reports::dashboard(db, today)
+    })
+    .await
+}
 
 #[tauri::command]
 pub async fn create_quick_browse(

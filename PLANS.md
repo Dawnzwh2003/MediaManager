@@ -1,6 +1,10 @@
 # 分阶段开发计划
 
-## 当前状态（Phase 9）
+## 当前状态（Phase 10）
+
+Phase 10 History、Continue Watching、Dashboard 已通过 Windows 验收（2026-11-12）。前端 55/55、开发监听 1/1，两种 Rust 配置各 85/85（含真实 FFmpeg）、严格 build/Clippy/fmt 通过；十万媒体/事件分页无重复遗漏，真实桌面 19 项通过。修复立即 seek/关闭时进度保存的写锁竞争并保留回归。退出后日志/计数零差异、112 个合成原件指纹一致，测试窗口/1420 监听/截图会话均已清理。详见 [Phase 10 验收记录](docs/validation/phase10-validation.md)。本轮停止。
+
+## 上阶段状态（Phase 9）
 
 Phase 9 Quick Browse 已通过 Windows 验收（2026-11-11）。固定会话、全部快捷键、数字标签 Toggle、视频自动播放/默认静音和共享活动服务已实现。前端 52/52，两种 Rust 配置各 78/78，真实桌面 15 项回归及原生全屏/Space/Esc 验证通过。测试窗口、1420 监听和截图会话已清理，本轮停止。详见 [Phase 9 验证记录](docs/validation/phase9-validation.md)。
 
@@ -230,6 +234,15 @@ Phase 0 已将用户批准规则写入设计并通过 15 项 architecture review
 - 新增 8 项 Rust 场景和 4 项前端测试。完整前端 52/52、开发监听 1/1、Rust 两种配置各 78/78（真实 FFmpeg 无跳过）、两种 Clippy、build/fmt/diff-check 通过。100,001 随机成员构建桌面配置 10.152 秒，101 批、每批最多 1,000，200 项分页 p95=3.243 ms；冻结源读期间并发 Like/新增正常提交，源快照不纳入新增。
 - 隔离合成库真实 Tauri 15 项回归全部通过；原生 F 全屏、Space 下一项、全屏下 Esc 退出/恢复窗口通过。修复视频退出时父子重复保存已释放 owner 的问题，回归覆盖保存后释放/结束会话。截图、失败修复与最终结果见 [验收记录](docs/validation/phase9-validation.md)。桌面 CLI 正常退出，1420 无监听，截图内核已重置。到此停止。
 
+## Phase 10 — History、Continue Watching、Dashboard（已验收）
+
+- History 提供五类记录、四个本地日历时间范围，以 SQLite COUNT/MAX 聚合 Event Log，Play 使用 qualified_at；一媒体一行、ID 稳定裁决并列，保留 missing/superseded 历史并标为不可用。
+- Continue Watching 只读取 active 视频当前版本的非零进度，按批准公式派生 completed，显示进度并复用原只读播放器恢复；旧版本和已完成状态不混入，不凭进度增加 Play。
+- Dashboard 同一读事务返回五项汇总与五组各最多六项预览；前端不加载完整事件表。默认 100、最大 200 项 keyset 页，代次/查询签名拒绝旧游标，虚拟列表和 lazy thumbnails 有界。
+- v10 追加时间/进度索引、当前进度视图与报表代次，旧 migration/事件/状态不改写。v9 升级备份、数据保留和重开回归通过。进度保存获取 IMMEDIATE 短写事务后再校验 owner/CAS，150ms 并发写锁及幂等回归通过。
+- 最终前端 55/55、两种 Rust 配置各 85/85、两种 Clippy、build/test:dev/fmt/diff-check 通过。十万媒体/事件的 500 页完整遍历，desktop History p95=168.621ms、Dashboard=271.423ms、续播首页约 0.89ms。真实桌面 19 项及原生 History 导航通过，退出后的计数/最近时间零差异，112 个合成原件指纹一致。
+- [验收记录与截图](docs/validation/phase10-validation.md) 包含首轮失败、回归修复、最终复测及清理。已完成并停止，不推进后续路线。
+
 ## 后续路线 — 恢复、规模与发布验收（未授权）
 
 - **状态：未开始**；依赖：Phase 1–5。
@@ -240,6 +253,6 @@ Phase 0 已将用户批准规则写入设计并通过 15 项 architecture review
 
 ## 依赖与状态维护
 
-主路径 0→1→2→3→4→5→6→7→8→9。数据层接口在依赖满足后细化。每次推进记录完成范围、实际验证结果和剩余风险。
+主路径 0→1→2→3→4→5→6→7→8→9→10。数据层接口在依赖满足后细化。每次推进记录完成范围、实际验证结果和剩余风险。
 
-当前授权为 Phase 9 Quick Browse，测试与文档更新完成，停止。
+Phase 10 报表与续播已完成实施、测试、文档和清理，停止，不推进后续路线。

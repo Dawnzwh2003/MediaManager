@@ -1,10 +1,62 @@
 use super::*;
 
 const SECOND: Migration = Migration {
-    version: 10,
+    version: CURRENT_SCHEMA_VERSION + 1,
     name: "test_extension",
     sql: "CREATE TABLE test_extension (id INTEGER PRIMARY KEY, value TEXT NOT NULL) STRICT;",
 };
+
+#[test]
+fn reports_upgrade_preserves_v9_logs_progress_and_backup_then_reopens() {
+    let directory = tempfile::tempdir().unwrap();
+    let file = directory.path().join("reports.sqlite3");
+    let mut connection = Connection::open(&file).unwrap();
+    connection
+        .pragma_update(None, "foreign_keys", true)
+        .unwrap();
+    migrate_with(&mut connection, directory.path(), &MIGRATIONS[..9]).unwrap();
+    connection.execute_batch("INSERT INTO media(id,file_path,file_name,media_type,file_size,modified_time,imported_at,last_seen_at,created_seq,duration)
+      VALUES('legacy','/synthetic/legacy.mp4','legacy.mp4','video',0,1,1,1,1,100);
+      INSERT INTO playback_states(media_id,content_version_id,position_seconds,duration_seconds,completed,updated_at) VALUES('legacy',1,95,100,0,1);
+      INSERT INTO like_events(id,ingest_seq,request_id,media_id,occurred_at,recorded_at) VALUES('like',2,'like','legacy',10,10);").unwrap();
+    let facts = |c: &Connection| {
+        c.query_row("SELECT (SELECT count(*) FROM like_events),(SELECT like_count FROM media WHERE id='legacy'),position_seconds,completed FROM playback_states WHERE media_id='legacy'",[],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,i64>(1)?,r.get::<_,f64>(2)?,r.get::<_,i64>(3)?))).unwrap()
+    };
+    let before = facts(&connection);
+    migrate(&mut connection, directory.path()).unwrap();
+    assert_eq!(facts(&connection), before);
+    assert_eq!(
+        connection
+            .query_row("SELECT completed FROM current_playback_progress", [], |r| r
+                .get::<_, i64>(0))
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        connection
+            .query_row("SELECT count(*) FROM play_events", [], |r| r
+                .get::<_, i64>(0))
+            .unwrap(),
+        0
+    );
+    let backups: Vec<_> = fs::read_dir(directory.path().join("backups"))
+        .unwrap()
+        .map(|r| r.unwrap().path())
+        .collect();
+    let backup = Connection::open(&backups[0]).unwrap();
+    assert_eq!(schema_version(&backup).unwrap(), 9);
+    assert_eq!(facts(&backup), before);
+    drop(connection);
+    let mut reopened = Connection::open(file).unwrap();
+    migrate(&mut reopened, directory.path()).unwrap();
+    assert_eq!(facts(&reopened), before);
+    assert_eq!(schema_version(&reopened).unwrap(), 10);
+    assert!(!reopened
+        .prepare("PRAGMA foreign_key_check")
+        .unwrap()
+        .exists([])
+        .unwrap());
+}
 
 #[test]
 fn initialization_and_reopen_preserve_metadata() {
@@ -261,6 +313,11 @@ fn newer_database_is_rejected_before_persistent_connection_changes() {
             version: 9,
             name: MIGRATIONS[8].name,
             sql: MIGRATIONS[8].sql,
+        },
+        Migration {
+            version: 10,
+            name: MIGRATIONS[9].name,
+            sql: MIGRATIONS[9].sql,
         },
         SECOND,
     ];

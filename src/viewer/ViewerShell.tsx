@@ -18,7 +18,8 @@ import { quickBrowseApi } from "../api/quick-browse.ts";
 import { quickShortcut, TagShortcutQueue } from "../quick-browse/model.ts";
 import type { QuickViewerContext } from "../quick-browse/model.ts";
 
-export function ViewerShell({ initialId, filter, close, revision, changed, quick }: { initialId: string; filter: LibraryFilter; close: (force?: boolean) => void | Promise<void>; revision: number; changed: (mutation?: TagMutation) => void; quick?: QuickViewerContext }) {
+export function ViewerShell({ initialId, filter, close, revision, changed, quick, collection }: { initialId: string; filter: LibraryFilter; close: (force?: boolean) => void | Promise<void>; revision: number; changed: (mutation?: TagMutation) => void; quick?: QuickViewerContext; collection?: string[] }) {
+  const collectionAtOpen = useRef(collection);
   const quickRef = useRef(quick); quickRef.current = quick;
   const [feedback, setFeedback] = useState("");
   const [tagError, setTagError] = useState("");
@@ -45,6 +46,11 @@ export function ViewerShell({ initialId, filter, close, revision, changed, quick
   useEffect(() => { quickRef.current?.registerFlush(flush); return () => quickRef.current?.registerFlush(null); }, [flush]);
   const refreshNavigation = useCallback(async () => {
     if (quickRef.current) return;
+    if (collectionAtOpen.current) {
+      const index = collectionAtOpen.current.indexOf(id);
+      setNavigation({ previousId: collectionAtOpen.current[index - 1] ?? null, nextId: collectionAtOpen.current[index + 1] ?? null, generation: 0, key: "" });
+      return;
+    }
     const token = sessionRef.current?.token;
     if (!token) return;
     try {
@@ -68,12 +74,12 @@ export function ViewerShell({ initialId, filter, close, revision, changed, quick
           if (!active) { await viewerApi.close(opened.token); return; }
           sessionRef.current = opened; setSession(opened); setLoading(false);
           // The current item's View can change its rank or remove it from Unviewed.
-          const entry = context ? null : await viewerApi.navigation(filterAtOpen.current, id, null);
+          const entry = context || collectionAtOpen.current ? null : await viewerApi.navigation(filterAtOpen.current, id, null);
           if (!active) return;
           navigationAnchor.current = entry?.key ?? null;
           await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
           if (!active) return;
-          const activation = context?.activation ?? activations.current.activate(id,opened.contentVersionId,filterAtOpen.current.search ? "search" : id === initialId ? "grid" : "normal_viewer");
+          const activation = context?.activation ?? activations.current.activate(id,opened.contentVersionId,collectionAtOpen.current ? "history" : filterAtOpen.current.search ? "search" : id === initialId ? "grid" : "normal_viewer");
           activeId.current = activation.id;
           await activityApi.activate(opened.token,activation);
           if(opened.mediaType === "video") await activityApi.openPlayer(activation.id);
@@ -109,6 +115,11 @@ export function ViewerShell({ initialId, filter, close, revision, changed, quick
   const navigate = useCallback(async (direction: "previousId" | "nextId") => {
     if (quickRef.current) { if (busy || loading) return; setBusy(true); try { await quickRef.current.navigate(direction === "previousId" ? -1 : 1, flush); } catch (e) { setError(toApiError(e).message); } finally { setBusy(false); } return; }
     if (!navigation || busy || loading) return;
+    if (collectionAtOpen.current) {
+      const target = navigation[direction];
+      if (target) { setBusy(true); try { await flush(); setId(target); } catch (e) { setError(toApiError(e).message); } finally { setBusy(false); } }
+      return;
+    }
     setBusy(true); setError("");
     try { const fresh = await viewerApi.navigation(filterAtOpen.current, id, ownOrderingChange.current ? null : navigation.generation, navigationAnchor.current); ownOrderingChange.current=false; const target = fresh[direction]; if (target) { await flush(); setId(target); } }
     catch (e) { setError(toApiError(e).message); } finally { setBusy(false); }

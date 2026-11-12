@@ -8,6 +8,8 @@
                 ],
     "permissions":  [
                         "allow-get-app-status",
+                        "allow-query-reports",
+                        "allow-get-dashboard",
                         "allow-query-library",
                         "allow-get-media-details",
                         "allow-list-library-tags",

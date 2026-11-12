@@ -94,6 +94,8 @@ pub fn run() -> tauri::Result<()> {
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_app_status,
+            commands::query_reports,
+            commands::get_dashboard,
             commands::create_quick_browse,
             commands::get_quick_browse,
             commands::quick_browse_items,

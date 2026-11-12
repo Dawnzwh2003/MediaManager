@@ -2,7 +2,17 @@
 
 ## 状态与文档范围
 
-当前授权为 Phase 8 完整查询系统。交付文件名、System Tag、Custom Tag 搜索，组合筛选，完整排序，稳定随机顺序和性能测试。事件日志仍是统计事实来源，查询读取可重建的计数缓存。
+当前授权为 Phase 10：History、Continue Watching、Dashboard，完成测试后停止。此前 Phase 的授权描述保留为历史范围。
+
+### Phase 10 范围与统计口径
+
+- History 提供 Recently Viewed、Recently Played、Most Viewed、Most Played、Most Liked；Today、Last 7 Days、Last 30 Days、All Time。按稳定媒体 ID 汇总一行，Recently 使用范围内最后事件时间，Most 使用范围内事件数量，排序并列以 ID 降序稳定裁决。无相应事件的媒体不进入列表。
+- Today 从本地零点起，7/30 天包含今天及此前 6/29 个本地日历日；查询冻结 UTC 毫秒的包含起点/不包含终点，分页不滚动时间窗口。Play 按 qualified_at，View/Like 按 occurred_at；不以导入时间、播放进度或 started_at 冒充活动时间。
+- 历史保留 missing/superseded 媒体的事件，明确标为不可打开，不把同路径新实例当作原记录。History 页面浏览和 Dashboard 统计本身不产生 View；打开查看器后复用 activation 服务，source=history。
+- Continue Watching 仅显示 active 视频当前内容版本的 position>0 且未完成状态，按保存时间降序；显示已播/总时长和百分比。未知时长展示已播秒数及“时长未知”，不虚构百分比。完成状态由当前恢复位置和有效时长按既有公式计算，不由历史 Play 的 completed 推断；seek 保存可改变完成状态，不产生 Play。
+- Dashboard 展示 Total Media、Images、Videos、Total Likes、Views Today，以及 Recently Added、Recently Viewed、Continue Watching、Most Liked、Most Viewed 各最多 6 项。媒体数包括 active/missing，排除 superseded；Total Likes 包含保留的全部历史事件，Views Today 统计本地当天 View 事件。Recently Added 仅展示 active 媒体，历史类预览保留不可用条目。
+- 统计及排序由 SQLite 完成，History 每页默认 100、最大 200，keyset 游标绑定查询和数据代次；前端仅保留当前页、有界游标历史和可见行缩略图。不得将完整 Event Log 传到前端聚合。查看器在本页可用成员之间按打开时顺序导航，关闭后刷新报表。
+- 本轮不扩展历史会话恢复、发布包或跨平台验收；新行为验证正常、失败、恢复及 100,000 媒体/事件规模，完成后停止。
 
 固定技术栈：Tauri、React、TypeScript、Rust、SQLite、FFmpeg。具体依赖版本在工程初始化时锁定。
 

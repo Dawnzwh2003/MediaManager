@@ -1,0 +1,27 @@
+.library-shell.reports-shell {grid-template-columns:226px minmax(0,1fr)}
+.reports-workspace {min-height:0;min-width:0;display:flex;flex-direction:column;padding:32px 32px 0;overflow:hidden}
+.reports-workspace .library-header h1 {font-size:32px}.reports-workspace .library-header{flex-shrink:0}
+.report-controls {display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:14px 0 22px;border-bottom:1px solid #dce2d8}
+.report-controls select {border:1px solid #cdd8c9;border-radius:7px;background:#fff;padding:10px;color:#344f3c}
+.report-controls [role=group] {display:flex;gap:3px;background:#e9eee5;padding:4px;border-radius:8px}
+.report-controls [aria-pressed] {background:transparent;padding:8px 11px;border-radius:5px;font-size:12px;color:#687960}
+.report-controls [aria-pressed=true] {background:#fff;color:#365e49;box-shadow:0 1px 4px #29432d12}
+.report-caption {display:flex;justify-content:space-between;align-items:center;padding:20px 0 10px}.report-caption h2 {font-size:17px;font-weight:550}
+.report-list {flex:1;min-height:0;overflow:auto}.report-list.compact {overflow:visible;flex:none}
+.report-row {height:96px;display:flex;gap:15px;align-items:center;border-bottom:1px solid #e2e7dc}
+.report-open {display:flex;align-items:center;gap:16px;text-align:left;min-width:0;flex:1;background:transparent;color:inherit;padding:8px 0}
+.report-open:hover strong {color:#5c803d}.report-open:disabled {opacity:.7}
+.report-thumb {width:100px;height:66px;flex-shrink:0;border-radius:6px;overflow:hidden;background:#e5eadf;display:block}
+.report-thumb img {height:100%;width:100%;object-fit:cover}.report-thumb .thumbnail-placeholder {height:100%;font-size:14px}.report-thumb small{font-size:8px}
+.report-description {display:flex;flex-direction:column;min-width:0;gap:6px}.report-description strong {display:block;font-size:13px;font-weight:550}.report-description>span {color:#7c8774;font-size:10px}
+.report-description .watch-progress {display:flex;gap:3px;flex-direction:column;min-width:130px;max-width:240px;color:#45643c}
+.watch-progress progress {width:100%;height:5px;accent-color:#5a7c46}
+.report-value {display:flex;flex-direction:column;text-align:right;font-size:12px;color:#527246;flex-shrink:0;gap:4px;padding-right:10px}.report-value strong{font-size:20px;font-weight:500}.report-value small{font-size:10px;color:#819077}
+.report-empty {padding:60px 25px;text-align:center;color:#7e8b74}.report-empty p {margin:12px 0}.report-empty h2 {font-size:18px}
+.report-footer {display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px 0;border-top:1px solid #dce2d8}.report-footer>div{display:flex;align-items:center;gap:12px}
+.dashboard-scroll {overflow:auto;padding:5px 2px 30px}.dashboard-metrics{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}
+.metric {padding:20px;background:#fff;border:1px solid #dfe7d8;border-radius:10px;display:flex;flex-direction:column;gap:18px}.metric>span{font-size:11px;color:#7c8b72}.metric>strong{font-size:30px;font-weight:500;color:#375333}
+.dashboard-note {font-size:10px;color:#7e8a72;margin:14px 0 24px;line-height:1.8}.dashboard-sections{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px}
+.dashboard-panel {background:#fafbf7;border:1px solid #dfe7d8;border-radius:10px;padding:20px}.dashboard-panel h2{font-size:15px;font-weight:550;margin-bottom:8px}.dashboard-panel .report-thumb{width:74px;height:50px}.dashboard-panel .report-open{gap:10px}.dashboard-panel .report-value{padding-right:0}.dashboard-panel .report-row:last-child{border:0}
+@media(max-width:1120px){.library-shell.reports-shell{grid-template-columns:194px minmax(0,1fr)}.reports-workspace{padding:26px 20px 0}.dashboard-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}.dashboard-sections{grid-template-columns:1fr}}
+@media(max-width:650px){.library-shell.reports-shell{grid-template-columns:145px minmax(0,1fr)}.reports-workspace{padding:22px 12px 0}.reports-workspace .library-header h1{font-size:22px}.report-controls [role=group]{flex-wrap:wrap}.report-thumb{width:62px;height:50px}.report-open{gap:8px}.report-footer{flex-direction:column}.dashboard-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.metric{padding:12px}.metric>strong{font-size:24px}.dashboard-panel{padding:12px}}

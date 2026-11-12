@@ -12,6 +12,8 @@
 
 ## 审查与验证记录
 
+- [Phase 10 History / Continue Watching / Dashboard 验证](validation/phase10-validation.md)
+
 - [Phase 1 审查](reviews/PHASE1_REVIEW.md)
 - [Phase 2 审查](reviews/PHASE2_REVIEW.md)
 - [2026-11-02 历次验证](validation/2026-11-02.md)

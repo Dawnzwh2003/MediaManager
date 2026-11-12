@@ -5,6 +5,8 @@ mod events;
 mod library;
 mod playback;
 mod random_order;
+mod reports;
+pub use reports::ReportsRepository;
 pub(crate) mod statistics;
 pub use playback::PlaybackRepository;
 mod media;
@@ -30,6 +32,11 @@ pub struct Repositories<'a> {
 }
 
 impl Repositories<'_> {
+    pub fn reports(&mut self) -> ReportsRepository<'_> {
+        ReportsRepository {
+            connection: self.connection,
+        }
+    }
     pub fn playback(&mut self) -> PlaybackRepository<'_> {
         PlaybackRepository {
             connection: self.connection,

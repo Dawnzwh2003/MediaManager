@@ -2,7 +2,17 @@
 
 ## 当前基线与本轮变更理由
 
-身份、重复文件、保守匹配、Like、Activation View、Qualified Play、播放状态、completed、三层播放及 100,000+ 架构已获用户批准。Phase 8 在扫描、Library、Viewer/Player、活动日志和统计修复基础上交付完整查询。各阶段历史范围和新增行为见对应小节。
+身份、重复文件、保守匹配、Like、Activation View、Qualified Play、播放状态、completed、三层播放及 100,000+ 架构已获用户批准。当前 Phase 10 在 Phase 9 基础上提供 History、Continue Watching 和 Dashboard。各阶段历史范围和新增行为见对应小节。
+
+### Phase 10 报表读模型与 v10 migration
+
+- 新增 reports domain/service/repository 及 query_reports/get_dashboard 类型化 IPC。命令在 spawn_blocking 中通过独立 SQLite 连接执行，报表不占用业务写协调器；Repository 仅参数化读取，不判断事件资格或写事件。Dashboard 的汇总与五个预览在同一读事务中保持一致。
+- v10 追加 Like/View 的 occurred_at、Play 的 qualified_at 覆盖索引，以及非零进度的 updated_at 索引。旧 SQL、媒体、事件、计数、进度、标签均不重写；升级前沿用正式 runner 备份，失败事务回滚。索引创建是一次升级工作，普通重开不重建。
+- 时间段事件以 SQLite COUNT/MAX/GROUP BY 汇总媒体 ID，再按时间或数量加 ID keyset 返回 limit+1 行。All Time 同样读取日志，因此统计重建期间不依赖正在修复的 Counter Cache。SQLite temp_store=FILE、连接页缓存 4 MiB，Rust 只收集一页；不宣称 SQLite 全进程峰值内存已量化。
+- report_generation 跟踪恢复状态及内容版本/时长/导入时间变化；与 library_generation 相加形成单调代次，绑定完整查询签名和冻结时间窗口。事件/标签/扫描变化沿用 library_generation。游标过期明确返回 stale_cursor，刷新从首页恢复，不静默合并不一致页。
+- current_playback_progress 视图只联接 media.current_content_version_id 与 playback_states，采用恢复状态有效时长，缺失时回退当前 metadata 时长；按批准公式计算 completed。兼容旧客户端未更新 completed 的恢复行，不改 Event Log，也不做全表完成状态回填。历史 Play.completed 仍是该 session 的资格/终结事实。
+- React 增加侧栏入口与 ReportsWorkspace；History/CW 使用虚拟行和 lazy thumbnails，Dashboard 最多 30 个预览条目。前端仅计算本地日历边界及单项进度显示，计数、筛选、排序在 SQLite。打开报表条目复用 ViewerShell、只读资源协议、进度串行保存和 source=history activation；本页最多 100 个可用 ID 固定查看器导航顺序。
+- 真实续播验收复现进度事务与活动写入竞争：PlaybackRepository.save 改为先 BEGIN IMMEDIATE，再读取 owner/CAS/序号并写入，沿用短事务及 2 秒 busy_timeout。避免 DEFERRED 读取后的写升级失败，不改变保存/事件语义；回归用另一连接持有 150ms 写事务，校验保存等待后成功、同请求重试不增版本、零 Play。
 
 当前工具链政策由用户最新授权改为 Rust stable，本机 rustc/cargo 为 1.99.1（D025）。rust-toolchain.toml 选择实际编译通道，Cargo.toml 的 rust-version=1.90 仍是最低版本声明，不能当作当前 pin 或最低版本已验收。npm/Cargo 依赖及真实锁文件均已到位；2026-11-04 类型检查、前端构建、完整 Rust 测试/Clippy、Tauri info、正式 release 构建及隔离的真实桌面 IPC/持久化/实例锁检查均通过。浏览器预览专项仍受工具阻塞，阶段状态见 PLANS.md。以下 Phase 1 版本描述为历史快照。
 

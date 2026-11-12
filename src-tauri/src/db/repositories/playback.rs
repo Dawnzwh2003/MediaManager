@@ -3,7 +3,7 @@ use crate::{
     domain::viewer::{PlaybackState, ProgressWrite},
     error::{AppError, AppResult},
 };
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 pub struct PlaybackRepository<'a> {
     pub(crate) connection: &'a mut Connection,
 }
@@ -52,7 +52,11 @@ impl PlaybackRepository<'_> {
                 "invalid playback recovery state".into(),
             ));
         }
-        let tx = self.connection.transaction()?;
+        // Acquire the short write transaction before reading owner/CAS facts.
+        // A deferred read cannot safely upgrade while an activity writer commits.
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let owner:Option<(i64,Option<f64>,Option<f64>)>=tx.query_row("SELECT o.last_sequence,o.last_position,o.last_duration FROM playback_owners o JOIN media m ON m.id=o.media_id WHERE o.media_id=?1 AND o.content_version_id=?2 AND o.owner_id=?3 AND m.current_content_version_id=?2 AND m.state='active'",params![id,version,request.token],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional()?;
         let (sequence, position, duration) = owner.ok_or(AppError::StaleState)?;
         if request.sequence == sequence
