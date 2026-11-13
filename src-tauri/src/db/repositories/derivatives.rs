@@ -60,9 +60,11 @@ impl DerivativeStore<'_> {
     pub fn status(&self, id: &str) -> AppResult<Option<DerivativeStatus>> {
         Ok(self.0.query_row("SELECT d.status,d.metadata_status,d.metadata_error,d.thumbnail_error,CASE WHEN d.status='ready' THEN m.thumbnail_path END,d.attempts FROM media_derivatives d JOIN media m ON m.id=d.media_id WHERE m.id=?1",[id],|r| Ok(DerivativeStatus {status:r.get(0)?,metadata_status:r.get(1)?,metadata_error:r.get(2)?,thumbnail_error:r.get(3)?,thumbnail_path:r.get(4)?,attempts:r.get(5)?})).optional()?)
     }
-    pub fn recover(&self, version: i64) -> AppResult<()> {
-        self.0.execute("UPDATE media_derivatives SET status='pending' WHERE status='running' OR generator_version!=?1",[version])?;
-        Ok(())
+    pub fn recover(&self, version: i64) -> AppResult<bool> {
+        // Pending rows are already scheduled even if their old generator differs.
+        // The worker stamps the current generator when it claims each item.
+        let changed = self.0.execute("UPDATE media_derivatives SET status='pending' WHERE media_id IN (SELECT media_id FROM media_derivatives WHERE status='running' OR (generator_version!=?1 AND status!='pending') LIMIT 1000)",[version])?;
+        Ok(changed == 1000)
     }
     pub fn queue(&mut self, id: &str) -> AppResult<()> {
         let tx = self.0.transaction()?;
@@ -107,6 +109,41 @@ impl DerivativeStore<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn interrupted_thumbnail_recovery_is_batched_and_old_pending_generators_terminate() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut c = Connection::open_in_memory().unwrap();
+        crate::db::migrations::migrate(&mut c, dir.path()).unwrap();
+        c.execute_batch("WITH RECURSIVE n(v) AS(VALUES(1) UNION ALL SELECT v+1 FROM n WHERE v<2501)
+          INSERT INTO media(id,file_path,file_name,media_type,file_size,modified_time,imported_at,last_seen_at,created_seq)
+          SELECT printf('m%04d',v),printf('/synthetic/%d.jpg',v),'test.jpg','image',1,1,v,1,v FROM n;
+          UPDATE media_derivatives SET status='running',generator_version=0;").unwrap();
+        let mut pending = 0;
+        let mut batches = 0;
+        loop {
+            let more = DerivativeStore(&mut c).recover(1).unwrap();
+            batches += 1;
+            let now: i64 = c
+                .query_row(
+                    "SELECT count(*) FROM media_derivatives WHERE status='pending'",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert!(now - pending <= 1000);
+            pending = now;
+            if !more {
+                break;
+            }
+            assert!(batches < 5);
+        }
+        assert_eq!((pending, batches), (2501, 3));
+        assert!(!DerivativeStore(&mut c).recover(1).unwrap());
+        let item = DerivativeStore(&mut c).item(None).unwrap().unwrap();
+        assert!(DerivativeStore(&mut c)
+            .claim(&item, "regenerated", 1)
+            .unwrap());
+    }
     fn fixture() -> (tempfile::TempDir, Connection) {
         let dir = tempfile::tempdir().unwrap();
         let mut c = Connection::open_in_memory().unwrap();

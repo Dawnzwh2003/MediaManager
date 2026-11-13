@@ -2,7 +2,15 @@
 
 ## 当前基线与本轮变更理由
 
-身份、重复文件、保守匹配、Like、Activation View、Qualified Play、播放状态、completed、三层播放及 100,000+ 架构已获用户批准。当前 Phase 10 在 Phase 9 基础上提供 History、Continue Watching 和 Dashboard。各阶段历史范围和新增行为见对应小节。
+身份、重复文件、保守匹配、Like、Activation View、Qualified Play、播放状态、completed、三层播放及 100,000+ 架构已获用户批准。当前 Phase 11 在已有 History、Continue Watching 和 Dashboard 基础上完成稳定性与性能检查。各阶段历史范围和新增行为见对应小节。
+
+### Phase 11 有界扫描、后台恢复与 v11 migration
+
+- 实测复现 by_path 全表扫描与 unseen 每步按根排序，v11 增加 `media_scan_path(file_path,missing) WHERE state!='superseded'` 和 `scan_unseen(root,media_id,generation)`。unseen 从证据表按媒体 ID seek；队列和观察记录继续使用已有索引。旧迁移与数据模型不变，正常升级备份、失败回滚。
+- 真实 10k 小文件扫描证明逐文件 FULL 自动提交成本显著。入队、观察及消费 checkpoint、身份发布、missing 更新各按最多 100 项短事务提交；读取、证据核对和指纹全部在事务外，数据库仍使用 WAL/FULL。最多保留 100 个已准备项，不加载全库；观察记录和队列完成状态原子提交。失败回滚整批，取消保留已提交结果，下次重新枚举并对账。
+- 高置信度移动覆盖不同活动目标时，在同一事务内先将旧目标实例标记 superseded，再移动源实例。源 ID/imported_at/标签/事件/进度保留，旧目标的历史仍保留；不删除任何原件或历史。不可靠匹配规则不变。System Tag 关联现在包含物理根目录本身；既有漏关联在下次扫描修复。
+- Thumbnail/Quick Browse 启动恢复在各自后台线程执行及重试，不在返回应用状态前同步等待写锁。Thumbnail recovery 每批最多 1,000 行，旧版本 pending 项直接由原队列消费，避免恢复循环无法结束。播放器 claim 与 save 均先获取 IMMEDIATE 写事务，再校验和更新状态，避免读后升级的 SQLITE_BUSY。
+- 保留既有 Grid 虚拟化、可见缩略图请求、共享单 FFmpeg 进程预算、磁盘随机排序和 Event Log 聚合架构。10k/100k、百万事件、进程异常退出、迁移及计数重建的实际证据见 [Phase 11 验收](docs/validation/phase11-validation.md)。History 每页仍重新聚合，首次随机排序仍需建磁盘索引；这些成本没有转移至 React。
 
 ### Phase 10 报表读模型与 v10 migration
 

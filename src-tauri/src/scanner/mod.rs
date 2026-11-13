@@ -2,7 +2,7 @@
 pub mod fingerprint;
 use crate::{
     db::{
-        repositories::scanning::{Observation, ScanRun, ScanStore},
+        repositories::scanning::{Observation, Publication, ScanRun, ScanStore, SCAN_BATCH},
         Database,
     },
     error::{AppError, AppResult},
@@ -120,6 +120,7 @@ fn work(
         };
         let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("data");
         store.directory(root_text, &directory, parent, name, now)?;
+        let mut queued = Vec::with_capacity(SCAN_BATCH);
         match fs::read_dir(path) {
             Err(_) => report.failed += 1,
             Ok(entries) => {
@@ -151,53 +152,78 @@ fn work(
                         continue;
                     };
                     if meta.is_dir() {
-                        store.enqueue(root_text, path_text, "dir")?;
+                        queued.push((path_text.to_owned(), "dir"));
                     } else if meta.is_file() && kind(&path).is_some() {
-                        store.enqueue(root_text, path_text, "file")?;
+                        queued.push((path_text.to_owned(), "file"));
+                    }
+                    if queued.len() == SCAN_BATCH {
+                        store.enqueue_batch(root_text, &queued)?;
+                        queued.clear();
                     }
                 }
             }
         }
+        if !queued.is_empty() {
+            store.enqueue_batch(root_text, &queued)?;
+        }
         store.done(root_text, &directory)?;
     }
-    while let Some(path) = store.next(root_text, "file")? {
-        if cancel.load(Ordering::Relaxed) {
-            report.cancelled = true;
-            return Ok(report);
+    loop {
+        let paths = store.files(root_text)?;
+        if paths.is_empty() {
+            break;
         }
-        let observed = (|| -> AppResult<Observation> {
-            let evidence = Evidence::read(Path::new(&path))?;
-            let old = store.by_path(&path)?;
-            let fingerprint = if let Some(old) =
-                old.filter(|old| old.stat == evidence.stat && evidence.key.is_some())
-            {
-                old.fingerprint
-            } else {
-                report.fingerprinted += 1;
-                fingerprint::quick(Path::new(&path), evidence.size as u64, cancel)?
-            };
-            if Evidence::read(Path::new(&path))? != evidence {
-                return Err(AppError::Validation(
-                    "file changed during observation".into(),
-                ));
+        let mut staged = Vec::with_capacity(SCAN_BATCH);
+        for path in paths {
+            if cancel.load(Ordering::Relaxed) {
+                report.cancelled = true;
+                return Ok(report);
             }
-            Ok(Observation {
-                path: path.clone(),
-                evidence,
-                fingerprint,
-                kind: kind(Path::new(&path)).unwrap().into(),
-            })
-        })();
-        match observed {
-            Ok(o) => store.stage(root_text, &o)?,
-            Err(_) => report.failed += 1,
+            let observed = (|| -> AppResult<Observation> {
+                let evidence = Evidence::read(Path::new(&path))?;
+                let old = store.by_path(&path)?;
+                let fingerprint = if let Some(old) =
+                    old.filter(|old| old.stat == evidence.stat && evidence.key.is_some())
+                {
+                    old.fingerprint
+                } else {
+                    report.fingerprinted += 1;
+                    fingerprint::quick(Path::new(&path), evidence.size as u64, cancel)?
+                };
+                if Evidence::read(Path::new(&path))? != evidence {
+                    return Err(AppError::Validation(
+                        "file changed during observation".into(),
+                    ));
+                }
+                Ok(Observation {
+                    path: path.clone(),
+                    evidence,
+                    fingerprint,
+                    kind: kind(Path::new(&path)).unwrap().into(),
+                })
+            })();
+            match observed {
+                Ok(o) => staged.push((path, Some(o))),
+                Err(_) => {
+                    report.failed += 1;
+                    staged.push((path, None));
+                }
+            }
         }
-        store.done(root_text, &path)?;
+        // All filesystem reads and hashes above have finished before this short write.
+        store.stage_batch(root_text, &staged)?;
     }
     let mut after = String::new();
+    let run = ScanRun {
+        root: root_text,
+        generation,
+        observed_at: now,
+    };
+    let mut publications = Vec::with_capacity(SCAN_BATCH);
     while let Some(o) = store.observation(root_text, &after)? {
         after = o.path.clone();
         if cancel.load(Ordering::Relaxed) {
+            flush(store, &run, &mut publications)?;
             report.cancelled = true;
             return Ok(report);
         }
@@ -256,38 +282,59 @@ fn work(
         let mut tags = Vec::new();
         let mut parent = Path::new(&o.path).parent();
         while let Some(path) = parent {
+            tags.push(text(path)?.to_owned());
             if path == root {
                 break;
             }
-            tags.push(text(path)?.to_owned());
             parent = path.parent();
         }
-        store.persist(
-            &ScanRun {
-                root: root_text,
-                generation,
-                observed_at: now,
-            },
-            &o,
-            matched.as_ref().map(|m| m.id.as_str()),
+        publications.push(Publication {
+            observation: o,
+            id: matched.as_ref().map(|m| m.id.clone()),
             reason,
-            &tags,
-        )?;
+            tags,
+        });
+        if publications.len() == SCAN_BATCH {
+            flush(store, &run, &mut publications)?;
+        }
     }
+    flush(store, &run, &mut publications)?;
     // Any incomplete enumeration/read suppresses missing publication for this generation.
     if report.failed == 0 {
         let mut after = String::new();
+        let mut missing = Vec::with_capacity(SCAN_BATCH);
         while let Some((id, path)) = store.unseen(root_text, generation, &after)? {
             if cancel.load(Ordering::Relaxed) {
+                if !missing.is_empty() {
+                    store.missing_batch(&missing)?;
+                }
                 report.cancelled = true;
                 return Ok(report);
             }
             after = id.clone();
             if absent(&path) {
-                store.missing(&id)?;
+                missing.push(id);
                 report.missing += 1;
+                if missing.len() == SCAN_BATCH {
+                    store.missing_batch(&missing)?;
+                    missing.clear();
+                }
             }
+        }
+        if !missing.is_empty() {
+            store.missing_batch(&missing)?;
         }
     }
     Ok(report)
+}
+fn flush(
+    store: &mut ScanStore<'_>,
+    run: &ScanRun<'_>,
+    publications: &mut Vec<Publication>,
+) -> AppResult<()> {
+    if !publications.is_empty() {
+        store.persist_batch(run, publications)?;
+        publications.clear();
+    }
+    Ok(())
 }

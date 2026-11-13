@@ -18,7 +18,7 @@ struct Migration {
     sql: &'static str,
 }
 
-pub const CURRENT_SCHEMA_VERSION: u32 = 10;
+pub const CURRENT_SCHEMA_VERSION: u32 = 11;
 
 const MIGRATIONS: &[Migration] = &[
     // Append only: applied SQL checksums are immutable.
@@ -71,6 +71,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 10,
         name: "reports",
         sql: include_str!("../../migrations/0010_reports.sql"),
+    },
+    Migration {
+        version: 11,
+        name: "scanner_indexes",
+        sql: include_str!("../../migrations/0011_scanner_indexes.sql"),
     },
 ];
 

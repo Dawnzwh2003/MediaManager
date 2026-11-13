@@ -7,6 +7,67 @@ const SECOND: Migration = Migration {
 };
 
 #[test]
+fn phase11_index_upgrade_preserves_scaled_v10_data_and_is_idempotent() {
+    for size in [10000, 100000] {
+        let directory = tempfile::tempdir().unwrap();
+        let mut c = Connection::open(directory.path().join("upgrade.sqlite3")).unwrap();
+        c.pragma_update(None, "foreign_keys", true).unwrap();
+        migrate_with(&mut c, directory.path(), &MIGRATIONS[..10]).unwrap();
+        c.execute("WITH RECURSIVE n(v) AS(VALUES(1) UNION ALL SELECT v+1 FROM n WHERE v<?1)
+          INSERT INTO media(id,file_path,file_name,media_type,file_size,modified_time,imported_at,last_seen_at,created_seq)
+          SELECT printf('m%06d',v),printf('/synthetic/%06d.jpg',v),'test.jpg','image',1,1,v,1,v FROM n",[size]).unwrap();
+        c.execute_batch("INSERT INTO like_events(id,request_id,ingest_seq,media_id,occurred_at,recorded_at) VALUES('retained','retained',200000,'m000001',1,1);
+          INSERT INTO playback_states(media_id,content_version_id,position_seconds,duration_seconds,completed,updated_at) VALUES('m000001',1,20,100,0,1);").unwrap();
+        let started = std::time::Instant::now();
+        migrate(&mut c, directory.path()).unwrap();
+        let upgrade = started.elapsed().as_secs_f64() * 1000.0;
+        assert_eq!(
+            c.query_row("SELECT count(*) FROM media", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            size
+        );
+        assert_eq!(
+            c.query_row("SELECT like_count FROM media WHERE id='m000001'", [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            c.query_row("SELECT position_seconds FROM playback_states", [], |r| r
+                .get::<_, f64>(0))
+                .unwrap(),
+            20.0
+        );
+        let backups: Vec<_> = fs::read_dir(directory.path().join("backups"))
+            .unwrap()
+            .map(|r| r.unwrap().path())
+            .collect();
+        assert_eq!(backups.len(), 1);
+        let backup = Connection::open(&backups[0]).unwrap();
+        assert_eq!(schema_version(&backup).unwrap(), 10);
+        assert_eq!(
+            backup
+                .query_row("SELECT count(*) FROM media", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            size
+        );
+        assert!(!c
+            .prepare("PRAGMA foreign_key_check")
+            .unwrap()
+            .exists([])
+            .unwrap());
+        migrate(&mut c, directory.path()).unwrap();
+        assert_eq!(
+            fs::read_dir(directory.path().join("backups"))
+                .unwrap()
+                .count(),
+            1
+        );
+        println!("MIGRATION_SCALE media={size} v10_to_v11_including_backup_ms={upgrade:.3}");
+    }
+}
+
+#[test]
 fn reports_upgrade_preserves_v9_logs_progress_and_backup_then_reopens() {
     let directory = tempfile::tempdir().unwrap();
     let file = directory.path().join("reports.sqlite3");
@@ -50,7 +111,7 @@ fn reports_upgrade_preserves_v9_logs_progress_and_backup_then_reopens() {
     let mut reopened = Connection::open(file).unwrap();
     migrate(&mut reopened, directory.path()).unwrap();
     assert_eq!(facts(&reopened), before);
-    assert_eq!(schema_version(&reopened).unwrap(), 10);
+    assert_eq!(schema_version(&reopened).unwrap(), CURRENT_SCHEMA_VERSION);
     assert!(!reopened
         .prepare("PRAGMA foreign_key_check")
         .unwrap()
@@ -318,6 +379,11 @@ fn newer_database_is_rejected_before_persistent_connection_changes() {
             version: 10,
             name: MIGRATIONS[9].name,
             sql: MIGRATIONS[9].sql,
+        },
+        Migration {
+            version: 11,
+            name: MIGRATIONS[10].name,
+            sql: MIGRATIONS[10].sql,
         },
         SECOND,
     ];

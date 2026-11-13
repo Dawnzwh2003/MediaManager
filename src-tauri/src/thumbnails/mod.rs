@@ -55,18 +55,24 @@ impl Database {
         {
             return Err(AppError::Busy);
         }
-        if let Err(error) = database.derivative_store().recover(GENERATOR_VERSION) {
-            self.thumbnail_worker_running
-                .store(false, Ordering::Release);
-            return Err(error);
-        }
         let cancel = Arc::new(AtomicBool::new(false));
         let stop = Arc::clone(&cancel);
         let thread = std::thread::spawn(move || {
+            let mut recovering = true;
             while !stop.load(Ordering::Relaxed) {
+                if recovering {
+                    match database.derivative_store().recover(GENERATOR_VERSION) {
+                        Ok(more) => recovering = more,
+                        Err(_) => recovering = true,
+                    }
+                    if recovering {
+                        std::thread::sleep(Duration::from_millis(100));
+                        continue;
+                    }
+                }
                 // Storage failures leave durable work for the next iteration/restart.
                 if database.process_derivatives(&tools, &stop).is_err() {
-                    let _ = database.derivative_store().recover(GENERATOR_VERSION);
+                    recovering = true;
                 }
                 std::thread::sleep(Duration::from_millis(100));
             }

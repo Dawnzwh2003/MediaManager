@@ -4,6 +4,8 @@ Tauri + React + TypeScript + Rust + SQLite 媒体库，包含扫描、缩略图�
 
 Phase 10 在侧栏提供 History、Continue Watching、Dashboard。History 按事件汇总五类记录，可切换 Today / Last 7 Days / Last 30 Days / All Time；7/30 天包含今天，按本地日历计算。Continue Watching 显示当前版本未完成视频和播放进度，打开后从保存位置恢复。Dashboard 展示媒体数量、Like 总数、当天 Views 和五组有限预览。聚合、排序和分页均由 SQLite 完成，前端不加载完整事件表。范围和验收结果见 [Phase 10 记录](docs/validation/phase10-validation.md)。
 
+Phase 11 完成稳定性与性能检查，使用 10,000 / 100,000 媒体夹具、最多 1,000,000 View Events 和真实 Tauri 界面。虚拟 Grid 最多渲染 16 张卡片，每页最多 100 项；SQLite 承担筛选、排序与聚合。修复了扫描查询退化、逐文件提交开销、启动恢复阻塞、播放器写锁竞争及移动覆盖冲突。测量条件、延迟限制和回归结果见 [Phase 11 验收](docs/validation/phase11-validation.md) 与 [全仓复审](docs/reviews/PHASE11_CODE_REVIEW.md)。
+
 ## 环境与安装
 
 - Node.js >=22.18（当前环境为 24.22.2），npm。
@@ -49,14 +51,14 @@ cargo check
 ```text
 src/app/                 React 状态页
 src/api/                 唯一 Tauri invoke / DTO / 错误处理入口
-src-tauri/src/commands/   get_app_status（唯一 IPC command）
-src-tauri/src/domain/     状态 DTO
-src-tauri/src/services/   状态用例与惰性初始化
+src-tauri/src/commands/   类型化状态、媒体、标签、查看器、活动及报表 IPC
+src-tauri/src/domain/     业务模型与 DTO
+src-tauri/src/services/   按用例拆分的服务及后台任务
 src-tauri/src/platform/   安全路径创建
 src-tauri/src/db/         连接、单实例锁、migration runner
 src-tauri/src/db/repositories/  媒体、标签、只读事件、快照、设置
 src-tauri/src/domain/library.rs  持久化模型
-src-tauri/migrations/     v1 应用元数据 + v2 数据模型
+src-tauri/migrations/     v1–v11 可追踪数据库迁移
 src-tauri/tests/          后端集成测试
 tests/frontend/          TypeScript DTO 契约测试
 tests/architecture/      IPC 与权限边界测试
@@ -91,7 +93,7 @@ React → `src/api/app-status.ts` → `get_app_status` → 阻塞 worker → Rus
 - `schema_migrations` 为 runner 自举表；每份编号 SQL 与对应记录同一事务。SQL 失败由事务回滚，下一次从最后已提交版本继续。
 - 既有库升级前通过 SQLite backup API 保存包含 WAL 数据的一致性备份，成功后才迁移。备份失败不继续升级，回退使用备份，不承诺自动降级。
 - 已应用 SQL 不修改。新增 migration 必须加入 runner 的静态清单；名称、SHA-256 与应用时间记录在库中。`.gitattributes` 固定 LF，避免换行改变校验和。
-- 当前 schema=5；旧 migration 不变，0005 增加 Library 查询代次和索引。升级前自动备份，保留媒体身份、历史、标签及播放状态。
+- 当前 schema=11；0011 仅增加扫描路径与 unseen keyset 索引。旧 migration 不变，升级前自动备份，保留媒体身份、历史、标签及播放状态。
 
 ## Phase 5 基础 Media Library
 

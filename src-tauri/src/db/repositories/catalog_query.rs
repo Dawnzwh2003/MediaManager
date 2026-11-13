@@ -294,6 +294,93 @@ mod tests {
     use rusqlite::Connection;
 
     #[test]
+    fn filtered_keysets_keep_media_seeks_and_relationship_lookups_indexed() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut c = Connection::open_in_memory().unwrap();
+        crate::db::migrations::migrate(&mut c, directory.path()).unwrap();
+        let base = LibraryFilter::default();
+        for (name, filter) in [
+            (
+                "filename",
+                LibraryFilter {
+                    search: "rare".into(),
+                    search_scope: SearchScope::Filename,
+                    ..base.clone()
+                },
+            ),
+            (
+                "system",
+                LibraryFilter {
+                    system_tag_id: Some("root".into()),
+                    ..base.clone()
+                },
+            ),
+            (
+                "customAnd",
+                LibraryFilter {
+                    custom_tag_ids: vec!["a".into(), "b".into()],
+                    ..base.clone()
+                },
+            ),
+            (
+                "customOr",
+                LibraryFilter {
+                    custom_tag_ids: vec!["a".into(), "b".into()],
+                    custom_tag_mode: TagMode::Or,
+                    ..base.clone()
+                },
+            ),
+            (
+                "tagSearch",
+                LibraryFilter {
+                    search: "Travel".into(),
+                    search_scope: SearchScope::CustomTag,
+                    ..base.clone()
+                },
+            ),
+            (
+                "combined",
+                LibraryFilter {
+                    search: "rare".into(),
+                    system_tag_id: Some("root".into()),
+                    custom_tag_ids: vec!["a".into()],
+                    media_type: Some("video".into()),
+                    ..base.clone()
+                },
+            ),
+        ] {
+            let plan = QueryPlan::new(&filter).unwrap();
+            let cursor = LibraryCursor {
+                generation: 0,
+                signature: String::new(),
+                id: "m050000".into(),
+                key: "50000".into(),
+            };
+            let (sql, values) = plan.statement("m.id", Some(&cursor), 100, false).unwrap();
+            let lines = c
+                .prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
+                .unwrap()
+                .query_map(params_from_iter(values), |r| r.get::<_, String>(3))
+                .unwrap()
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap();
+            assert!(
+                lines.iter().any(|p| p.contains("SEARCH m USING")
+                    && p.contains("imported_at")
+                    && p.contains('<')),
+                "{name}: {lines:?}"
+            );
+            assert!(
+                !lines.iter().any(|p| p.contains("SCAN m")
+                    || p.contains("SCAN mt")
+                    || p.contains("TEMP B-TREE FOR ORDER BY")),
+                "{name}: {lines:?}"
+            );
+            println!("FILTER_PLAN {name}: {lines:?}");
+        }
+    }
+
+    #[test]
     fn production_keysets_seek_indexes_without_a_temporary_sort() {
         use LibrarySort::*;
         let directory = tempfile::tempdir().unwrap();

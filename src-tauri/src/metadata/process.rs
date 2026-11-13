@@ -122,6 +122,18 @@ mod tests {
                 let _ = std::io::stdout().write_all(&vec![b'x'; MAX_OUTPUT * 2]);
             }
             Ok("fail") => std::process::exit(7),
+            Ok("exclusive") => {
+                let path = std::path::PathBuf::from(
+                    std::env::var_os("MEDIA_MANAGER_GATE_MARKER").unwrap(),
+                );
+                let _file = std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&path)
+                    .expect("two tool processes overlapped");
+                std::thread::sleep(Duration::from_millis(80));
+                std::fs::remove_file(path).unwrap();
+            }
             _ => (),
         }
     }
@@ -164,5 +176,21 @@ mod tests {
             &AtomicBool::new(false)
         )
         .is_ok());
+    }
+    #[test]
+    fn concurrent_tool_requests_never_overlap_child_processes() {
+        let directory = tempfile::tempdir().unwrap();
+        let marker = directory.path().join("active-tool");
+        std::thread::scope(|scope| {
+            for _ in 0..4 {
+                let marker = &marker;
+                scope.spawn(move || {
+                    let mut command = child_command("exclusive");
+                    command.env("MEDIA_MANAGER_GATE_MARKER", marker);
+                    assert!(run(command, Duration::from_secs(5), &AtomicBool::new(false)).is_ok());
+                });
+            }
+        });
+        assert!(!marker.exists());
     }
 }

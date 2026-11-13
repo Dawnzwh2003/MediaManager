@@ -12,6 +12,10 @@
 
 ## 审查与验证记录
 
+- [Phase 11 robustness review](reviews/PHASE11_ROBUSTNESS_REVIEW.md)
+- [Phase 11 稳定性与性能验收](validation/phase11-validation.md)
+- [Phase 11 全仓 code review](reviews/PHASE11_CODE_REVIEW.md)
+
 - [Phase 10 History / Continue Watching / Dashboard 验证](validation/phase10-validation.md)
 
 - [Phase 1 审查](reviews/PHASE1_REVIEW.md)

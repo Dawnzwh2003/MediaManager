@@ -349,13 +349,20 @@ impl Drop for Worker {
 }
 pub fn spawn(db: &Database) -> AppResult<Worker> {
     let mut db = db.background_connection()?;
-    db.browse_store().recover()?;
     let stop = Arc::new(AtomicBool::new(false));
     let active: ActiveBuild = Arc::new(Mutex::new(None));
     let stopped = stop.clone();
     let current = active.clone();
     let thread = std::thread::spawn(move || {
+        let mut recovering = true;
         while !stopped.load(Ordering::Relaxed) {
+            if recovering {
+                if db.browse_store().recover().is_err() {
+                    std::thread::sleep(Duration::from_millis(50));
+                    continue;
+                }
+                recovering = false;
+            }
             if let Ok(Some(id)) = db.browse_store().next_job() {
                 let flag = Arc::new(AtomicBool::new(false));
                 if let Ok(mut active) = current.lock() {

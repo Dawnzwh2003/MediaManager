@@ -20,7 +20,9 @@ impl PlaybackRepository<'_> {
         version: i64,
         now: i64,
     ) -> AppResult<(String, PlaybackState)> {
-        let tx = self.connection.transaction()?;
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let duration:Option<Option<f64>>=tx.query_row("SELECT duration FROM media WHERE id=?1 AND current_content_version_id=?2 AND state='active' AND media_type='video'",params![id,version],|r|r.get(0)).optional()?;
         let duration = duration.ok_or(AppError::NotFound)?;
         tx.execute("INSERT INTO playback_states(media_id,content_version_id,position_seconds,duration_seconds,completed,updated_at) VALUES(?1,?2,0,?3,0,?4) ON CONFLICT DO NOTHING",params![id,version,duration,now])?;
