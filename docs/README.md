@@ -12,6 +12,10 @@
 
 ## 审查与验证记录
 
+- [Phase 12 Folder Import 验收与 21 项覆盖](validation/folder-import-validation.md)
+
+- [首次 Release Review / Release Readiness（2026-11-13）](reviews/RELEASE_REVIEW_2026-11-13.md)
+
 - [Phase 11 robustness review](reviews/PHASE11_ROBUSTNESS_REVIEW.md)
 - [Phase 11 稳定性与性能验收](validation/phase11-validation.md)
 - [Phase 11 全仓 code review](reviews/PHASE11_CODE_REVIEW.md)

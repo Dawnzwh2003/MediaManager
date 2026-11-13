@@ -18,9 +18,10 @@ struct Migration {
     sql: &'static str,
 }
 
-pub const CURRENT_SCHEMA_VERSION: u32 = 11;
+pub const CURRENT_SCHEMA_VERSION: u32 = 12;
 
 const MIGRATIONS: &[Migration] = &[
+    // The ordered list remains append-only; v12 is registered below.
     // Append only: applied SQL checksums are immutable.
     Migration {
         version: 1,
@@ -76,6 +77,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 11,
         name: "scanner_indexes",
         sql: include_str!("../../migrations/0011_scanner_indexes.sql"),
+    },
+    Migration {
+        version: 12,
+        name: "folder_import",
+        sql: include_str!("../../migrations/0012_folder_import.sql"),
     },
 ];
 

@@ -50,7 +50,7 @@ fn text(path: &Path) -> AppResult<&str> {
 fn absent(path: &str) -> bool {
     fs::symlink_metadata(path).is_err_and(|e| e.kind() == std::io::ErrorKind::NotFound)
 }
-fn kind(path: &Path) -> Option<&'static str> {
+pub(crate) fn kind(path: &Path) -> Option<&'static str> {
     match path.extension()?.to_str()?.to_ascii_lowercase().as_str() {
         "jpg" | "jpeg" | "png" | "webp" | "gif" | "bmp" => Some("image"),
         "mp4" | "webm" | "mov" | "mkv" | "avi" => Some("video"),

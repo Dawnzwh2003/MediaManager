@@ -2,6 +2,7 @@ pub mod db;
 pub mod domain;
 pub mod error;
 pub mod identity;
+pub mod importing;
 pub mod metadata;
 pub mod platform;
 pub mod scanner;
@@ -18,6 +19,7 @@ pub fn run() -> tauri::Result<()> {
     use tauri::Manager;
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let root = app.path().app_local_data_dir()?;
             app.manage(Arc::new(services::app_status::AppState::new(root)));
@@ -93,6 +95,13 @@ pub fn run() -> tauri::Result<()> {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            commands::pick_import_folder,
+            commands::get_import_job,
+            commands::start_folder_import,
+            commands::cancel_folder_import,
+            commands::get_import_storage,
+            commands::pick_import_storage,
+            commands::list_import_sources,
             commands::get_app_status,
             commands::query_reports,
             commands::get_dashboard,

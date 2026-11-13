@@ -3,6 +3,7 @@ import type { LibraryFilter, LibraryTag } from "../api/library-contracts.ts";
 import { useTagPage } from "./hooks.ts";
 import { customFilterIds, MAX_FILTER_TAGS } from "./model.ts";
 import type { ReportSection } from "../api/report-contracts.ts";
+import { SourceTags } from "../importing/SourceTags.tsx";
 
 function SystemBranch({ parentId, filter, choose, revision, depth = 0 }: { parentId: string | null; filter: LibraryFilter; choose: (tag: LibraryTag) => void; revision: number; depth?: number }) {
   const [after, setAfter] = useState<string | null>(null);
@@ -34,7 +35,7 @@ export function Sidebar({ filter, onFilter, revision, onManage, section = "libra
   }
   return <aside className="sidebar" aria-label="媒体库导航">
     <div className="brand"><span className="brand-mark">▦</span><div>Media Library<small>本地媒体，井然有序</small></div></div>
-    <div className="nav-section"><span className="section-label">LIBRARY</span><button className={`nav-item all-media ${section === "library" && !filter.systemTagId && !selected.length ? "active" : ""}`} onClick={() => onFilter({ ...filter, systemTagId: null, customTagId: null, customTagIds: [] })}><span>▦</span> All Media</button>
+    <div className="nav-section"><span className="section-label">LIBRARY</span><button className={`nav-item all-media ${section === "library" && !filter.systemTagId && !filter.sourceTagId && !selected.length ? "active" : ""}`} onClick={() => onFilter({ ...filter, systemTagId: null, sourceTagId: null, customTagId: null, customTagIds: [] })}><span>▦</span> All Media</button>
       {onSection && ([ ["dashboard", "Dashboard"], ["history", "History"], ["continue", "Continue Watching"] ] as const).map(([value, label]) => <button className={`nav-item ${section === value ? "active" : ""}`} key={value} aria-current={section === value ? "page" : undefined} onClick={() => onSection(value)}>{label}</button>)}
     </div>
     <div className="nav-section"><h2 className="section-label">SYSTEM TAGS <span className="badge">只读</span></h2><SystemBranch parentId={null} filter={filter} choose={tag => onFilter({ ...filter, systemTagId: tag.id === filter.systemTagId ? null : tag.id })} revision={revision} /><p className="nav-note">父目录默认包含所有子目录。</p></div>
@@ -46,6 +47,7 @@ export function Sidebar({ filter, onFilter, revision, onManage, section = "libra
       {page.items.map(tag => <button key={tag.id} className={`nav-item ${selected.includes(tag.id) ? "active" : ""}`} aria-pressed={selected.includes(tag.id)} disabled={selected.length >= MAX_FILTER_TAGS && !selected.includes(tag.id)} onClick={() => toggleTag(tag.id)}><span className="tag-dot" /><span className="truncate">{tag.name}</span></button>)}
       {after && <button className="text-button" onClick={() => setAfter(null)}>返回标签首页</button>}{page.nextAfter && <button className="text-button" onClick={() => setAfter(page.nextAfter)}>下一组标签 →</button>}
     </div>
+    <SourceTags selected={filter.sourceTagId} choose={id => onFilter({ ...filter, sourceTagId:id })} revision={revision} />
     <div className="sidebar-footer"><span className="status-dot" /> 本地数据库 · 原件只读</div>
   </aside>;
 }

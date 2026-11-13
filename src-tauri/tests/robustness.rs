@@ -254,13 +254,14 @@ fn actual_unexpected_exit_retains_committed_facts_rolls_back_partial_writes_and_
 }
 
 #[test]
-fn high_confidence_move_over_an_existing_target_keeps_source_id_and_both_histories() {
+fn overwrite_reconciliation_preserves_both_histories_when_identity_evidence_changes() {
     let (temp, paths, mut db) = fixture();
     let root = temp.path().join("overwrite");
     std::fs::create_dir(&root).unwrap();
     let source = root.join("a.mp4");
     let target = root.join("b.mp4");
     std::fs::write(&source, b"first synthetic file").unwrap();
+    std::thread::sleep(Duration::from_millis(75));
     std::fs::write(&target, b"different synthetic file").unwrap();
     db.scan(&root, &std::sync::atomic::AtomicBool::new(false))
         .unwrap();
@@ -296,21 +297,40 @@ fn high_confidence_move_over_an_existing_target_keeps_source_id_and_both_histori
             2,
         )
         .unwrap();
+    let source_before = media_manager::identity::Evidence::read(&source).unwrap();
+    let target_before = media_manager::identity::Evidence::read(&target).unwrap();
     std::fs::remove_file(&target).unwrap();
     std::fs::rename(&source, &target).unwrap();
+    let target_after = media_manager::identity::Evidence::read(&target).unwrap();
+    println!("OVERWRITE_EVIDENCE source_before={source_before:?} target_before={target_before:?} target_after={target_after:?}");
     let report = db.scan(&root, &std::sync::atomic::AtomicBool::new(false));
     assert!(report.is_ok(),"confirmed overwrite must retire the old destination before relocating the source: {report:?}");
     let moved = db.repositories().media().get(&a_id).unwrap().unwrap();
     assert_eq!(
-        (
-            moved.file_name.as_str(),
-            moved.imported_at,
-            moved.like_count,
-            moved.playback_position
-        ),
-        ("b.mp4", imported, 1, 20.0)
+        (moved.imported_at, moved.like_count, moved.playback_position),
+        (imported, 1, 20.0)
     );
-    assert!(!moved.missing);
+    // Windows can tunnel the deleted target's creation time onto the source.
+    // Birth time is part of the approved identity evidence, so that case must
+    // take the conservative missing + new path rather than inherit history.
+    if source_before.key.is_some() && source_before.key == target_after.key {
+        assert_eq!(moved.file_name, "b.mp4");
+        assert!(!moved.missing);
+    } else {
+        assert_eq!(moved.file_name, "a.mp4");
+        assert!(moved.missing);
+        let active = db
+            .repositories()
+            .media()
+            .list(None, 100)
+            .unwrap()
+            .into_iter()
+            .find(|m| m.file_name == "b.mp4" && !m.missing)
+            .unwrap();
+        assert_ne!(active.id, a_id);
+        assert_ne!(active.id, b_id);
+        assert_eq!((active.like_count, active.playback_position), (0, 0.0));
+    }
     assert_eq!(
         db.repositories()
             .custom_tags()

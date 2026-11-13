@@ -6,4 +6,5 @@ pub mod viewer;
 
 pub use app_status::{AppStatus, DatabaseStatus, StorageStatus};
 pub mod activity;
+pub mod importing;
 pub mod reports;

@@ -5,6 +5,8 @@ pub type AppResult<T> = Result<T, AppError>;
 
 #[derive(Debug, Error)]
 pub enum AppError {
+    #[error("folder import failed: {0}")]
+    Import(&'static str),
     #[error("filesystem operation failed: {0}")]
     Io(#[from] std::io::Error),
     #[error("database operation failed: {0}")]
@@ -52,6 +54,26 @@ impl AppError {
             Self::MediaUnavailable(_) => (
                 "media_unavailable",
                 "媒体资源无法读取或转换失败，请重试。",
+                true,
+            ),
+            Self::Import("insufficient_storage") => (
+                "insufficient_storage",
+                "目标存储空间不足，请选择其他目录或释放空间后重试。",
+                true,
+            ),
+            Self::Import("source_storage_overlap") => (
+                "source_storage_overlap",
+                "来源目录和媒体存储目录不能相同或互相包含。",
+                false,
+            ),
+            Self::Import("source_unavailable") => (
+                "source_unavailable",
+                "来源目录暂时不可访问，或包含不支持的链接路径。",
+                true,
+            ),
+            Self::Import(_) => (
+                "import_unavailable",
+                "无法开始导入，请检查任务状态和存储目录。",
                 true,
             ),
             Self::Json(_) => ("invalid_data", "保存的数据格式不正确。", false),

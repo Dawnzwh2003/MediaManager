@@ -8,6 +8,7 @@ use crate::{
 };
 
 struct Runtime {
+    _imports: crate::importing::Worker,
     _quick_browse: crate::services::quick_browse::Worker,
     _statistics: crate::services::statistics::Worker,
     _thumbnails: crate::thumbnails::Worker,
@@ -25,6 +26,14 @@ pub struct AppState {
 }
 
 impl AppState {
+    #[cfg(feature = "desktop")]
+    pub(crate) fn cancel_import(&self, id: &str) -> AppResult<()> {
+        let slot = self.runtime.lock().map_err(|_| AppError::Internal)?;
+        if let Some(runtime) = slot.as_ref() {
+            runtime._imports.cancel(id);
+        }
+        Ok(())
+    }
     #[cfg(feature = "desktop")]
     pub(crate) fn cancel_browse(&self, id: &str) -> AppResult<()> {
         let slot = self.runtime.lock().map_err(|_| AppError::Internal)?;
@@ -74,11 +83,13 @@ impl AppState {
         if slot.is_none() {
             let paths = AppPaths::prepare(&self.root)?;
             let database = Database::open(&paths)?;
+            let imports = crate::importing::spawn(&database)?;
             let quick_browse = crate::services::quick_browse::spawn(&database)?;
             let statistics = crate::services::statistics::spawn(&database)?;
             let thumbnails =
                 database.start_thumbnail_worker(crate::metadata::Toolchain::default())?;
             *slot = Some(Runtime {
+                _imports: imports,
                 _quick_browse: quick_browse,
                 _statistics: statistics,
                 _thumbnails: thumbnails,

@@ -2,6 +2,7 @@
 pub(crate) mod activity;
 mod catalog_query;
 mod events;
+pub(crate) mod imports;
 mod library;
 mod playback;
 mod random_order;

@@ -28,7 +28,7 @@ export function customFilterIds(filter: LibraryFilter): string[] {
 }
 
 export function hasLibraryFilters(filter: LibraryFilter): boolean {
-  return Boolean(filter.search || filter.mediaType || filter.systemTagId || customFilterIds(filter).length
+  return Boolean(filter.search || filter.mediaType || filter.systemTagId || filter.sourceTagId || customFilterIds(filter).length
     || filter.likes || filter.views || filter.plays || filter.imported || filter.viewed !== "all");
 }
 export function virtualRows(count: number, columns: number, scrollTop: number, height: number) {

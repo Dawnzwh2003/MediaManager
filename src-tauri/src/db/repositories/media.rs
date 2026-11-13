@@ -72,6 +72,19 @@ impl MediaRepository<'_> {
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        Self::insert_in(&transaction, media)?;
+        transaction.commit()?;
+        self.get(&media.id)?.ok_or(AppError::Internal)
+    }
+
+    /// Transaction seam shared with import publication; never commits independently.
+    pub(crate) fn insert_in(
+        transaction: &rusqlite::Transaction<'_>,
+        media: &NewMedia,
+    ) -> AppResult<()> {
+        nonempty(&media.id)?;
+        nonempty(&media.file_path)?;
+        nonempty(&media.file_name)?;
         let sequence: i64 = transaction.query_row(
             "UPDATE db_sequence SET value=value+1 WHERE id=1 RETURNING value",
             [],
@@ -83,8 +96,7 @@ impl MediaRepository<'_> {
             params![media.id,media.fingerprint,media.file_path,media.file_name,media.media_type.as_str(),media.file_size,
                 media.created_time,media.modified_time,media.imported_at,media.last_seen_at,media.width,media.height,media.duration,sequence],
         )?;
-        transaction.commit()?;
-        self.get(&media.id)?.ok_or(AppError::Internal)
+        Ok(())
     }
 
     pub fn get(&self, id: &str) -> AppResult<Option<Media>> {

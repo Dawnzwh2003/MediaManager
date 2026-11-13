@@ -79,7 +79,8 @@ impl ScanStore<'_> {
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         for (path, kind) in entries {
             tx.execute(
-                "INSERT OR IGNORE INTO scan_queue(root,path,kind) VALUES(?1,?2,?3)",
+                // A promoted import file is not a complete library entry until its publication commits.
+                "INSERT OR IGNORE INTO scan_queue(root,path,kind) SELECT ?1,?2,?3 WHERE ?3!='file' OR NOT EXISTS(SELECT 1 FROM import_entries i WHERE i.target_path=?2 AND i.state!='done' AND NOT EXISTS(SELECT 1 FROM media m WHERE m.id=i.media_id AND m.file_path=i.target_path))",
                 params![root, path, kind],
             )?;
         }
@@ -278,6 +279,67 @@ fn stored(r: &rusqlite::Row<'_>) -> rusqlite::Result<Stored> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn confirmed_move_publication_retires_occupied_destination_before_reserving_path() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut c = Connection::open_in_memory().unwrap();
+        c.pragma_update(None, "foreign_keys", true).unwrap();
+        crate::db::migrations::migrate(&mut c, temp.path()).unwrap();
+        let mut store = ScanStore(&mut c);
+        let generation = store.begin("/fixture").unwrap();
+        let run = ScanRun {
+            root: "/fixture",
+            generation,
+            observed_at: 1,
+        };
+        let publication = |path: &str, id: Option<String>| Publication {
+            observation: Observation {
+                path: path.into(),
+                evidence: Evidence {
+                    key: Some(path.into()),
+                    stat: path.into(),
+                    size: 1,
+                    modified: 1,
+                    created: None,
+                },
+                fingerprint: path.into(),
+                kind: "video".into(),
+            },
+            id,
+            reason: "confirmed fixture",
+            tags: vec![],
+        };
+        store
+            .persist_batch(
+                &run,
+                &[
+                    publication("/fixture/a.mp4", None),
+                    publication("/fixture/b.mp4", None),
+                ],
+            )
+            .unwrap();
+        let a = store.by_path("/fixture/a.mp4").unwrap().unwrap().id;
+        let b = store.by_path("/fixture/b.mp4").unwrap().unwrap().id;
+        store
+            .persist_batch(&run, &[publication("/fixture/b.mp4", Some(a.clone()))])
+            .unwrap();
+        assert_eq!(store.by_path("/fixture/b.mp4").unwrap().unwrap().id, a);
+        assert_eq!(
+            store
+                .0
+                .query_row("SELECT state FROM media WHERE id=?1", [b], |r| r
+                    .get::<_, String>(0))
+                .unwrap(),
+            "superseded"
+        );
+        assert_eq!(
+            store
+                .0
+                .query_row("SELECT count(*) FROM media", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            2
+        );
+    }
     #[test]
     fn prepared_batches_roll_back_queue_and_publication_on_failure() {
         let temp = tempfile::tempdir().unwrap();

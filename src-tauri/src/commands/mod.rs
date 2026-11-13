@@ -1,6 +1,108 @@
+use crate::domain::importing::*;
 use crate::domain::library_query::*;
 use crate::domain::quick_browse::*;
 use crate::domain::reports::*;
+use tauri_plugin_dialog::DialogExt;
+
+async fn pick_directory(
+    app: tauri::AppHandle,
+    title: &'static str,
+) -> AppResult<Option<std::path::PathBuf>> {
+    tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .set_title(title)
+            .blocking_pick_folder()
+            .map(|path| {
+                path.into_path().map_err(|_| {
+                    crate::error::AppError::Validation("local directory required".into())
+                })
+            })
+            .transpose()
+    })
+    .await
+    .map_err(|_| crate::error::AppError::Internal)?
+}
+#[tauri::command]
+pub async fn pick_import_folder(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, Arc<AppState>>,
+) -> AppResult<Option<ImportJob>> {
+    let Some(path) = pick_directory(app, "Import Folder").await? else {
+        return Ok(None);
+    };
+    library_call(Arc::clone(state.inner()), move |db| {
+        crate::importing::create_preview(db, &path).map(Some)
+    })
+    .await
+}
+#[tauri::command]
+pub async fn get_import_job(
+    state: tauri::State<'_, Arc<AppState>>,
+    id: Option<String>,
+) -> AppResult<Option<ImportJob>> {
+    library_call(Arc::clone(state.inner()), move |db| {
+        crate::importing::get_job(db, id.as_deref())
+    })
+    .await
+}
+#[tauri::command]
+pub async fn start_folder_import(
+    state: tauri::State<'_, Arc<AppState>>,
+    id: String,
+    resume: bool,
+) -> AppResult<ImportJob> {
+    library_call(Arc::clone(state.inner()), move |db| {
+        crate::importing::start_import(db, &id, resume, &crate::importing::storage::LocalStorage)
+    })
+    .await
+}
+#[tauri::command]
+pub async fn cancel_folder_import(
+    state: tauri::State<'_, Arc<AppState>>,
+    id: String,
+) -> AppResult<()> {
+    state.cancel_import(&id)?;
+    library_call(Arc::clone(state.inner()), move |db| {
+        crate::importing::cancel_import(db, &id)
+    })
+    .await
+}
+#[tauri::command]
+pub async fn get_import_storage(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> AppResult<ImportStorageSettings> {
+    library_call(
+        Arc::clone(state.inner()),
+        crate::importing::storage_settings,
+    )
+    .await
+}
+#[tauri::command]
+pub async fn pick_import_storage(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, Arc<AppState>>,
+) -> AppResult<Option<ImportStorageSettings>> {
+    let Some(path) = pick_directory(app, "Media data storage").await? else {
+        return Ok(None);
+    };
+    library_call(Arc::clone(state.inner()), move |db| {
+        crate::importing::set_storage(db, &path).map(Some)
+    })
+    .await
+}
+#[tauri::command]
+pub async fn list_import_sources(
+    state: tauri::State<'_, Arc<AppState>>,
+    source_id: Option<String>,
+    parent_id: Option<String>,
+    after: String,
+) -> AppResult<SourcePage> {
+    library_call(Arc::clone(state.inner()), move |db| {
+        crate::importing::source_nodes(db, source_id.as_deref(), parent_id.as_deref(), &after)
+    })
+    .await
+}
 
 #[tauri::command]
 pub async fn query_reports(

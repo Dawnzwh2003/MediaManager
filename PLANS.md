@@ -1,6 +1,18 @@
 # 分阶段开发计划
 
-## 当前状态（Phase 11）
+## Phase 12 — Folder Import（已完成，2026-11-13）
+
+原生目录选择、复制型托管导入、完整 Hash 复用、独立来源树/筛选、存储设置、预览/进度/取消/恢复与逐项失败隔离已实现。先审查 Scanner/Fingerprint/仓储/Tag/Event/Storage，再记录架构影响、身份例外及 v12 migration plan（D034），随后独立实施；未重写 Scanner，Release Review 既有未提交工作保留。
+
+最终两种 Rust 配置各 **122/122**（含真实 FFmpeg、16 项导入集成测试与 v11 事实保留迁移）；前端 **57/57**，开发监听 **1/1**；typecheck、两种 Clippy `-D warnings`、fmt、Tauri production build、git diff --check 全通过。覆盖用户 21 项和额外的全文/partial 差异、预览后变化、DB 失败+Scanner 预留保护、时钟变化恢复及 100k 媒体/来源分页。真实桌面原生选择器、首次/重复导入、父级来源筛选和 Settings 验证通过；退出后原件 Hash 一致、三类事件均为零、外键无异常，窗口及监听已关闭。
+
+**Ready for Beta: YES（本机 Windows x64 验收范围）。** Settings 只影响后续文件，不搬旧媒体/数据库；完整 Hash 需读取全部内容，链接/reparse 不跟随，暂无任务历史管理/自动清理。正式分发的干净系统安装、签名和 FFmpeg 分发限制保留，不把 Beta 验收视为正式 Release Review 通过。详见 [Folder Import 验收](docs/validation/folder-import-validation.md)。本阶段停止，不自动开始其他 Phase。
+
+## Release Review（2026-11-13）
+
+首次正式发布审查已执行；未新增产品功能或改变 Schema。结论 **Ready for release: NO**：正式 UI 没有导入/启动扫描入口，空库无法投入使用；干净系统安装/卸载、签名与工具分发验收仍未完成。生产 EXE 和临时配置的 NSIS 包构建通过，两种 Rust 配置各 105/105、前端 55/55、监听 1/1、两种 Clippy/fmt 通过。生产空库/重启、v10→v11、真实续播、Quick Browse 和 100k 库已检查。修正 Windows 覆盖移动测试对创建时间稳定性的假设，另增高置信度仓储发布回归，保守身份规则未变。README 已更新；完整证据及限制见 [Release Review](docs/reviews/RELEASE_REVIEW_2026-11-13.md)。
+
+## 上阶段状态（Phase 11）
 
 Phase 11 已完成稳定性与性能检查（2026-11-12，Windows）。先 robustness review，再复现修复及 10k/100k/百万事件测量，最后完整测试和全仓 code review。Node 55/55、监听 1/1，两种 Rust 配置各 100/100（包含真实 FFmpeg）、build/fmt/两种 Clippy 通过；两个真实 Tauri 规模各 13 项通过。详见 [验收记录](docs/validation/phase11-validation.md)、[robustness review](docs/reviews/PHASE11_ROBUSTNESS_REVIEW.md)、[全仓复审](docs/reviews/PHASE11_CODE_REVIEW.md)。已记录聚合及重建尾延迟限制，不宣称发布性能 SLA。本轮停止。
 

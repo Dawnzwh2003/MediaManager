@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-import-storage"
+description = "Enables the get_import_storage command without any pre-configured scope."
+commands.allow = ["get_import_storage"]
+
+[[permission]]
+identifier = "deny-get-import-storage"
+description = "Denies the get_import_storage command without any pre-configured scope."
+commands.deny = ["get_import_storage"]

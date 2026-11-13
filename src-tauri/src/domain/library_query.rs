@@ -8,6 +8,8 @@ pub struct LibraryFilter {
     pub search_scope: SearchScope,
     pub media_type: Option<String>,
     pub system_tag_id: Option<String>,
+    #[serde(default)]
+    pub source_tag_id: Option<String>,
     pub custom_tag_id: Option<String>,
     #[serde(default)]
     pub custom_tag_ids: Vec<String>,

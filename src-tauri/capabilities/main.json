@@ -7,6 +7,13 @@
                     "main"
                 ],
     "permissions":  [
+                        "allow-pick-import-folder",
+                        "allow-get-import-job",
+                        "allow-start-folder-import",
+                        "allow-cancel-folder-import",
+                        "allow-get-import-storage",
+                        "allow-pick-import-storage",
+                        "allow-list-import-sources",
                         "allow-get-app-status",
                         "allow-query-reports",
                         "allow-get-dashboard",

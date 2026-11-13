@@ -10,6 +10,7 @@ export interface LibraryFilter {
   searchScope: SearchScope;
   mediaType: "image" | "video" | null;
   systemTagId: string | null;
+  sourceTagId: string | null;
   customTagId: string | null;
   customTagIds: string[];
   customTagMode: "and" | "or";
@@ -32,7 +33,7 @@ export type TagMutation = { action: "create"; name: string } | { action: "rename
 export interface Thumbnail { mediaId: string; status: "pending" | "running" | "ready" | "failed" | "unavailable"; path: string | null; error: string | null }
 
 export const initialFilter: LibraryFilter = {
-  search: "", searchScope: "all", mediaType: null, systemTagId: null, customTagId: null,
+  search: "", searchScope: "all", mediaType: null, systemTagId: null, sourceTagId: null, customTagId: null,
   customTagIds: [], customTagMode: "and", likes: null, views: null, plays: null, imported: null,
   viewed: "all", sort: "recent", random: { seed: "00000000000000000000000000000000", version: 1 },
 };

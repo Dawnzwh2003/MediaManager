@@ -2,7 +2,22 @@
 
 ## 当前基线与本轮变更理由
 
-身份、重复文件、保守匹配、Like、Activation View、Qualified Play、播放状态、completed、三层播放及 100,000+ 架构已获用户批准。当前 Phase 11 在已有 History、Continue Watching 和 Dashboard 基础上完成稳定性与性能检查。各阶段历史范围和新增行为见对应小节。
+### Phase 12 Folder Import 设计与 migration plan（实施前）
+
+本次用户授权将“扫描外部路径”扩展为“复制入托管区并保留来源”。现有 ScanStore 用于物理对账及 missing 发布，不能拿来表示预览或来源目录，因此增加按用例拆分的 ImportService/ImportStore/ManagedStorage，复用 Scanner 的格式分类、Fingerprint 模块、MediaRepository 的事务插入、System Tag 观察约束、既有 thumbnail worker 和 app_settings。Event Service 不进入导入调用链。
+
+1. **身份与内容**：只在 Folder Import 使用精确 filename+size+完整 SHA-256 复用。扩展现有 scanner::fingerprint 提供有界完整摘要/复制摘要，保留 quick-v1 格式。摘要绑定媒体内容版本与 stat，候选需重新验证当前文件，不给 hash 加 UNIQUE，不合并两个已有历史实例。旧外部媒体可物化至托管区，ID 和版本不变，原件保留；普通 Scanner 不改变默认独立实例规则。
+2. **Storage**：默认 `<app-local-data>/data/media/<id>/<basename>`；注册持久 storage_roots，app_settings 选后续新文件目标根，job 冻结该根，旧根继续访问。设置不搬已有文件或数据库。逐祖先拒绝 symlink/reparse、规范化包含检查、文件 create_new、可用空间预检/逐文件复检。copy/hash 在事务外，单 worker、64KiB buffer、磁盘目录/文件队列，内存不随媒体总量增长。
+3. **跨资源提交**：先在 job entry 保存保留 ID/目标路径，再写同目录 part、校验完整 hash/源证据、sync，原子无覆盖发布，最后一个短 SQLite IMMEDIATE transaction 写 media/物理 System Tag/scan_evidence/完整 hash/来源路径/Source Tag 关系和 checkpoint。复用媒体不写计数、imported_at、Custom Tag 或 playback_states。复制保持既有媒体 mtime，避免纯位置变动误失效内容版本。DB 失败保留文件发布凭据；重启将工作标 interrupted，显式 Resume 时核验自有完成文件后继续，不能把 part 当完整文件或盲删最终媒体。
+4. **来源标签**：import_sources 表示规范化来源根；import_source_tags 的 (source_id,relative_dir) 唯一，父级同来源，只有导入服务创建。media_import_sources 以媒体+来源+相对文件路径幂等；media_import_tags 多对多并关联所有目录祖先。根目录为分组、不伪装成物理目录标签。来源树按页读取；Source Tag 可递归过滤 Library，游标/Quick Browse filter 签名继续复用现有查询系统，旧 filter JSON 的新字段默认空。
+5. **v12 迁移**：只追加 storage_roots、import_sources、import_source_tags、media_import_sources、media_import_tags、media_full_hashes、managed_media、import_jobs、import_entries、import_plan_tags 及必要查询索引/来源关联代次触发器。队列/checkpoint 为可恢复工作状态，完整 hash 非唯一；无全库 hash/backfill、无旧媒体复制、无事件/状态清空。原 runner 在既有库升级前备份、每 migration 与 ledger 原子提交；v1–v11 原 SQL 不改。失败保留备份和原库，不自动降级。
+6. **UI/权限**：官方 Tauri 2 dialog Rust 插件，React 仅调用选目录/预览状态/开始/取消/来源树/存储设置等类型化用例 API，不授予通用 fs/sql/shell 或 dialog open capability。后台预览与导入不阻塞现有库；状态轮询返回聚合和有限失败/来源页，不传全库文件列表。
+
+迁移兼容和 21 项用户验收使用临时库/合成文件，包括已有三类事件/标签/进度、完整 hash 与 partial 相同但全文不同、复制失败/空间不足/取消/重启、源目标包含和 Unicode。保留 Release Review 未提交的文档与测试工作。
+
+实施补充：v12 的 `import_reserved_target(target_path)` 索引使 Scanner 入队时能跳过尚未数据库发布的导入预留文件；发布完成后继续正常增量对账。真实故障注入复现了缺少该保护会另建身份，已保留回归，未重写 Scanner。Worker 启动按已存在任务的 rowid 上界恢复中断状态，不依赖可能跳变的系统时钟，也不会把启动后新建的任务误标中断。Resume 在短事务内校验任务状态，保留已完成项及未发布目标凭据。
+
+身份、重复文件、保守匹配、Like、Activation View、Qualified Play、播放状态、completed、三层播放及 100,000+ 架构已获用户批准。Phase 11 已完成稳定性与性能检查；当前 Phase 12 在此基础上增加复制导入，不改变既有事件规则。各阶段历史范围和新增行为见对应小节。
 
 ### Phase 11 有界扫描、后台恢复与 v11 migration
 

@@ -125,6 +125,11 @@ impl QueryPlan {
             plan.predicates.push(system_members(&format!("id={value}")));
         }
         plan.add_custom_tags(filter)?;
+        if let Some(tag) = &filter.source_tag_id {
+            validate_tag_id(tag)?;
+            let value = bind(&mut plan.values, tag.clone());
+            plan.predicates.push(format!("EXISTS(SELECT 1 FROM media_import_tags mt WHERE mt.media_id=m.id AND mt.tag_id IN(WITH RECURSIVE source_tree(id) AS(SELECT id FROM import_source_tags WHERE id={value} UNION SELECT t.id FROM import_source_tags t JOIN source_tree p ON t.parent_id=p.id) SELECT id FROM source_tree))"));
+        }
         plan.add_search(filter);
         for (column, range, count) in [
             ("m.like_count", filter.likes, true),

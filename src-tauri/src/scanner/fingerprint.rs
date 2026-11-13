@@ -6,6 +6,30 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
 };
 const MIB: u64 = 1024 * 1024;
+/// Complete SHA-256, shared by import verification and streaming copy. Never a media identity.
+pub fn full(path: &Path, cancel: &AtomicBool) -> io::Result<String> {
+    complete(&mut File::open(path)?, &mut io::sink(), cancel)
+}
+pub fn complete(
+    reader: &mut impl Read,
+    writer: &mut impl io::Write,
+    cancel: &AtomicBool,
+) -> io::Result<String> {
+    let mut hash = Sha256::new();
+    let mut bytes = [0u8; 65536];
+    loop {
+        if cancel.load(Ordering::Relaxed) {
+            return Err(io::Error::new(io::ErrorKind::Interrupted, "cancelled"));
+        }
+        let count = reader.read(&mut bytes)?;
+        if count == 0 {
+            break;
+        }
+        writer.write_all(&bytes[..count])?;
+        hash.update(&bytes[..count]);
+    }
+    Ok(format!("{:x}", hash.finalize()))
+}
 /// Versioned, non-overlapping samples. At most 3 MiB, including for sparse videos.
 pub fn quick(path: &Path, size: u64, cancel: &AtomicBool) -> io::Result<String> {
     let mut file = File::open(path)?;

@@ -2,6 +2,13 @@ fn main() {
     #[cfg(feature = "desktop")]
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
         tauri_build::AppManifest::new().commands(&[
+            "pick_import_folder",
+            "get_import_job",
+            "start_folder_import",
+            "cancel_folder_import",
+            "get_import_storage",
+            "pick_import_storage",
+            "list_import_sources",
             "get_app_status",
             "query_reports",
             "get_dashboard",

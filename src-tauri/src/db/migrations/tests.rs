@@ -7,6 +7,139 @@ const SECOND: Migration = Migration {
 };
 
 #[test]
+fn folder_import_upgrade_from_v11_preserves_existing_facts_and_creates_only_empty_import_tables() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut c = Connection::open(dir.path().join("library.sqlite3")).unwrap();
+    c.pragma_update(None, "foreign_keys", true).unwrap();
+    migrate_with(&mut c, dir.path(), &MIGRATIONS[..11]).unwrap();
+    c.execute_batch("INSERT INTO media(id,file_path,file_name,media_type,file_size,modified_time,imported_at,last_seen_at,created_seq) VALUES('keep','/existing/中文.mp4','中文.mp4','video',1,1,42,1,1);
+    INSERT INTO like_events(id,request_id,ingest_seq,media_id,occurred_at,recorded_at) VALUES('like','like',2,'keep',1,1);
+    INSERT INTO view_events(id,request_id,ingest_seq,media_id,activation_id,occurred_at,recorded_at) VALUES('view','view',3,'keep','activation',1,1);
+    INSERT INTO play_events(id,request_id,ingest_seq,media_id,content_version_id,player_session_id,started_at,qualified_at,start_position,end_position,watched_seconds,completed) VALUES('play','play',4,'keep',1,'session',1,2,0,6,6,0);
+    INSERT INTO custom_tags(id,name,created_at,updated_at) VALUES('tag','Keep',1,1);
+    INSERT INTO media_custom_tags VALUES('keep','tag');
+    INSERT INTO playback_states(media_id,content_version_id,position_seconds,duration_seconds,completed,updated_at) VALUES('keep',1,4,10,0,1);").unwrap();
+    fn facts(c: &Connection) -> Vec<String> {
+        [
+            "media",
+            "like_events",
+            "view_events",
+            "play_events",
+            "custom_tags",
+            "media_custom_tags",
+            "playback_states",
+        ]
+        .iter()
+        .map(|table| {
+            let mut statement = c.prepare(&format!("SELECT * FROM {table}")).unwrap();
+            let mut rows = statement.query([]).unwrap();
+            let row = rows.next().unwrap().unwrap();
+            (0..row.as_ref().column_count())
+                .map(|n| format!("{:?}", row.get_ref(n).unwrap()))
+                .collect::<Vec<_>>()
+                .join("|")
+        })
+        .collect()
+    }
+    let before = facts(&c);
+    migrate(&mut c, dir.path()).unwrap();
+    assert_eq!(facts(&c), before);
+    for table in [
+        "storage_roots",
+        "import_sources",
+        "import_source_tags",
+        "media_import_sources",
+        "media_import_tags",
+        "import_jobs",
+        "import_entries",
+        "media_full_hashes",
+        "managed_media",
+    ] {
+        assert_eq!(
+            c.query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+    }
+    assert!(!c
+        .prepare("PRAGMA foreign_key_check")
+        .unwrap()
+        .exists([])
+        .unwrap());
+    let backup = fs::read_dir(dir.path().join("backups"))
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    let old = Connection::open(backup).unwrap();
+    assert_eq!(schema_version(&old).unwrap(), 11);
+    assert_eq!(facts(&old), before);
+    migrate(&mut c, dir.path()).unwrap();
+    assert_eq!(facts(&c), before);
+}
+
+#[test]
+fn first_release_upgrades_every_tracked_older_schema_and_keeps_backup_restorable() {
+    for version in 1..CURRENT_SCHEMA_VERSION as usize {
+        let dir = tempfile::tempdir().unwrap();
+        let mut c = Connection::open(dir.path().join("upgrade.sqlite3")).unwrap();
+        c.pragma_update(None, "foreign_keys", true).unwrap();
+        migrate_with(&mut c, dir.path(), &MIGRATIONS[..version]).unwrap();
+        c.execute(
+            "INSERT INTO app_metadata(key,value) VALUES('release-sentinel','retained')",
+            [],
+        )
+        .unwrap();
+        if version >= 2 {
+            c.execute_batch("INSERT INTO media(id,file_path,file_name,media_type,file_size,modified_time,imported_at,last_seen_at,created_seq) VALUES('keep','/synthetic/中文.mp4','中文.mp4','video',1,1,1,1,1);
+              INSERT INTO like_events(id,request_id,ingest_seq,media_id,occurred_at,recorded_at) VALUES('keep-like','keep-like',2,'keep',1,1);
+              INSERT INTO playback_states(media_id,content_version_id,position_seconds,duration_seconds,completed,updated_at) VALUES('keep',1,20,100,0,1);").unwrap();
+        }
+        migrate(&mut c, dir.path()).unwrap();
+        assert_eq!(schema_version(&c).unwrap(), CURRENT_SCHEMA_VERSION);
+        if version >= 2 {
+            let kept: (i64, f64) = c
+                .query_row(
+                    "SELECT like_count,playback_position FROM media WHERE id='keep'",
+                    [],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .unwrap();
+            assert_eq!(kept, (1, 20.0));
+        }
+        assert!(!c
+            .prepare("PRAGMA foreign_key_check")
+            .unwrap()
+            .exists([])
+            .unwrap());
+        let backup = fs::read_dir(dir.path().join("backups"))
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        drop(c);
+        let mut restored = Connection::open(backup).unwrap();
+        assert_eq!(schema_version(&restored).unwrap(), version as u32);
+        assert_eq!(
+            restored
+                .query_row(
+                    "SELECT value FROM app_metadata WHERE key='release-sentinel'",
+                    [],
+                    |r| r.get::<_, String>(0)
+                )
+                .unwrap(),
+            "retained"
+        );
+        // Reopening the recovery point can run the same official migration chain.
+        migrate(&mut restored, dir.path()).unwrap();
+        assert_eq!(schema_version(&restored).unwrap(), CURRENT_SCHEMA_VERSION);
+    }
+}
+
+#[test]
 fn phase11_index_upgrade_preserves_scaled_v10_data_and_is_idempotent() {
     for size in [10000, 100000] {
         let directory = tempfile::tempdir().unwrap();
@@ -384,6 +517,11 @@ fn newer_database_is_rejected_before_persistent_connection_changes() {
             version: 11,
             name: MIGRATIONS[10].name,
             sql: MIGRATIONS[10].sql,
+        },
+        Migration {
+            version: 12,
+            name: MIGRATIONS[11].name,
+            sql: MIGRATIONS[11].sql,
         },
         SECOND,
     ];
